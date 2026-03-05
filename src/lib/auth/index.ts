@@ -15,10 +15,19 @@ export const authOptions: NextAuthOptions = {
         token.tenantId = user.tenantId;
         token.tenantSlug = user.tenantSlug;
         token.role = user.role;
+        token.credentialsExpiresAt = user.credentialsExpiresAt;
       }
       return token;
     },
     async session({ session, token }) {
+      // Block expired student credentials: invalidate session so API routes reject
+      if (
+        token.role === "STUDENT" &&
+        token.credentialsExpiresAt &&
+        new Date(token.credentialsExpiresAt as string) < new Date()
+      ) {
+        return { ...session, user: { ...session.user, id: "" }, expires: "1970-01-01" };
+      }
       if (session.user) {
         session.user.id = token.id as string;
         session.tenantId = token.tenantId as string | undefined;
@@ -69,14 +78,16 @@ export const authOptions: NextAuthOptions = {
           return null;
         }
 
+        const userWithTenant = user as typeof user & { tenant?: { slug: string } };
         return {
           id: user.id,
           email: user.email,
           name: user.name,
           image: user.image,
           tenantId: user.tenantId ?? undefined,
-          tenantSlug: user.tenant?.slug ?? undefined,
+          tenantSlug: userWithTenant.tenant?.slug ?? undefined,
           role: user.role,
+          credentialsExpiresAt: user.credentialsExpiresAt?.toISOString() ?? undefined,
         };
       },
     }),
