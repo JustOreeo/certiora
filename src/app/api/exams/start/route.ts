@@ -29,9 +29,12 @@ export async function POST(request: NextRequest) {
       questionCount: parsed.data.questionCount,
     });
 
+    const timeLimitMinutes = examEngineService.getTimeLimitMinutes(parsed.data.examType);
+
     // Don't send correct answers to client
     const sanitized = {
       ...attempt,
+      timeLimitMinutes,
       answers: attempt?.answers.map((a: any) => ({
         ...a,
         question: {
@@ -48,6 +51,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(sanitized);
   } catch (error: any) {
     console.error("Start exam error:", error);
+    if (error.message === "Finish or abandon your current attempt first.") {
+      return NextResponse.json({ error: error.message }, { status: 409 });
+    }
     return NextResponse.json({ error: error.message || "Internal server error" }, { status: 500 });
   }
 }

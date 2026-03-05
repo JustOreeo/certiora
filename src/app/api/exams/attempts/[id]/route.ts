@@ -22,10 +22,12 @@ export async function GET(
       return NextResponse.json({ error: "Attempt not found" }, { status: 404 });
     }
 
-    // If not submitted, hide correct answers
+    // If not submitted, hide correct answers and include time limit for countdown
     if (attempt.status === "IN_PROGRESS") {
+      const timeLimitMinutes = examEngineService.getTimeLimitMinutes(attempt.examType);
       const sanitized = {
         ...attempt,
+        timeLimitMinutes,
         answers: attempt.answers.map((a: any) => ({
           ...a,
           question: {

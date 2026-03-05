@@ -33,3 +33,4 @@ prisma/migrations/**/migration_lock.toml
 # Misc
 *.tsbuildinfo
 next-env.d.ts
+product-development/

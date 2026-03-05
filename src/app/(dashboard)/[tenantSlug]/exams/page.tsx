@@ -12,8 +12,27 @@ type Attempt = {
   score: number | null;
   status: string;
   submittedAt: string | null;
+  timeSpentSeconds: number | null;
   createdAt: string;
 };
+
+const EXAM_TYPES = [
+  { examType: "SHORT_QUIZ" as const, label: "Short Quiz", range: "10–15 questions", timeLimitMinutes: null as number | null },
+  { examType: "QUICK_EXAM" as const, label: "Quick Exam", range: "30–40 questions", timeLimitMinutes: 60 },
+  { examType: "MOCK_EXAM" as const, label: "Mock Exam", range: "70–100 questions", timeLimitMinutes: 120 },
+];
+
+function formatTimeSpent(seconds: number | null | undefined): string {
+  if (seconds == null || seconds < 0) return "—";
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  if (m >= 60) {
+    const h = Math.floor(m / 60);
+    const min = m % 60;
+    return min > 0 ? `${h}h ${min}m` : `${h}h`;
+  }
+  return s > 0 ? `${m}m ${s}s` : `${m}m`;
+}
 
 function Spinner() {
   return (
@@ -49,7 +68,7 @@ export default function ExamsPage() {
   const tenantSlug = params?.tenantSlug ?? "";
   const [attempts, setAttempts] = useState<Attempt[]>([]);
   const [loading, setLoading] = useState(true);
-  const [starting, setStarting] = useState(false);
+  const [starting, setStarting] = useState<string | null>(null);
 
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -71,25 +90,25 @@ export default function ExamsPage() {
     }
   };
 
-  const startQuiz = async () => {
-    setStarting(true);
+  const startExam = async (examType: "SHORT_QUIZ" | "QUICK_EXAM" | "MOCK_EXAM") => {
+    setStarting(examType);
     try {
       const res = await fetch("/api/exams/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ examType: "SHORT_QUIZ" }),
+        body: JSON.stringify({ examType }),
       });
       const data = await res.json();
       if (res.ok && data.id) {
         router.push(`/${tenantSlug}/exams/${data.id}`);
       } else {
-        alert(data.error || "Failed to start quiz");
-        setStarting(false);
+        alert(data.error || "Failed to start exam");
+        setStarting(null);
       }
     } catch (error) {
-      console.error("Start quiz error:", error);
-      alert("Failed to start quiz");
-      setStarting(false);
+      console.error("Start exam error:", error);
+      alert("Failed to start exam");
+      setStarting(null);
     }
   };
 
@@ -114,20 +133,32 @@ export default function ExamsPage() {
 
       <div className="px-8 py-8">
         {/* Page header */}
-        <div className="flex items-center justify-between mb-7">
-          <div>
-            <h1 className="text-[22px] font-semibold text-heading">My Exams</h1>
-            <p className="text-sm text-secondary mt-0.5">
-              {completed.length} completed · {inProgress.length} in progress
-            </p>
-          </div>
-          <button
-            onClick={startQuiz}
-            disabled={starting}
-            className="inline-flex items-center gap-2 h-9 px-4 rounded-lg text-sm font-medium bg-primary text-inverse hover:bg-primary-hover disabled:opacity-60 transition-colors"
-          >
-            {starting ? <><Spinner /> Starting…</> : "Start short quiz"}
-          </button>
+        <div className="mb-7">
+          <h1 className="text-[22px] font-semibold text-heading">My Exams</h1>
+          <p className="text-sm text-secondary mt-0.5">
+            {completed.length} completed · {inProgress.length} in progress
+          </p>
+        </div>
+
+        {/* Exam type cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+          {EXAM_TYPES.map(({ examType, label, range, timeLimitMinutes }) => (
+            <button
+              key={examType}
+              onClick={() => startExam(examType)}
+              disabled={starting !== null}
+              className="bg-surface-card border border-border rounded-xl px-5 py-4 shadow-sm hover:border-primary hover:bg-primary-subtle/30 transition-colors text-left disabled:opacity-60"
+            >
+              <p className="text-sm font-semibold text-heading">{label}</p>
+              <p className="text-xs text-secondary mt-1">{range}</p>
+              {timeLimitMinutes != null && (
+                <p className="text-xs text-muted mt-0.5">{timeLimitMinutes} min limit</p>
+              )}
+              <div className="mt-3 inline-flex items-center gap-2 text-sm font-medium text-primary">
+                {starting === examType ? <><Spinner /> Starting…</> : `Start ${label.toLowerCase()}`}
+              </div>
+            </button>
+          ))}
         </div>
 
         {loading ? (
@@ -136,7 +167,7 @@ export default function ExamsPage() {
           </div>
         ) : attempts.length === 0 ? (
           <div className="bg-surface-card border border-border rounded-xl px-5 py-12 text-center shadow-sm">
-            <p className="text-sm text-secondary">No attempts yet. Start your first quiz above!</p>
+            <p className="text-sm text-secondary">No attempts yet. Start an exam above!</p>
           </div>
         ) : (
           <div className="space-y-2">
@@ -162,7 +193,7 @@ export default function ExamsPage() {
                       </p>
                       <p className="text-xs text-secondary mt-1">
                         {isSubmitted
-                          ? `Submitted ${new Date(a.submittedAt!).toLocaleString()}`
+                          ? `Submitted ${new Date(a.submittedAt!).toLocaleString()}${a.timeSpentSeconds != null ? ` · ${formatTimeSpent(a.timeSpentSeconds)}` : ""}`
                           : `Started ${new Date(a.createdAt).toLocaleString()}`}
                       </p>
                     </div>

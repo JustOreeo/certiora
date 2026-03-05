@@ -1,7 +1,7 @@
 import type { ExamType } from "@prisma/client";
 import { prisma, tenantScope } from "@/lib/db";
 import { questionBankService } from "@/services/question-bank";
-import { EXAM_TYPE_QUESTION_COUNTS } from "@/config/constants";
+import { EXAM_TYPE_QUESTION_COUNTS, EXAM_TYPE_TIME_LIMIT_MINUTES } from "@/config/constants";
 
 export type StartExamInput = {
   tenantId: string;
@@ -31,13 +31,49 @@ export const examEngineService = {
     return Math.floor(Math.random() * (max - min + 1)) + min;
   },
 
+  getRandomQuestionCountForQuickExam(): number {
+    const { min, max } = EXAM_TYPE_QUESTION_COUNTS.QUICK_EXAM;
+    return Math.floor(Math.random() * (max - min + 1)) + min;
+  },
+
+  getRandomQuestionCountForMockExam(): number {
+    const { min, max } = EXAM_TYPE_QUESTION_COUNTS.MOCK_EXAM;
+    return Math.floor(Math.random() * (max - min + 1)) + min;
+  },
+
+  getTimeLimitMinutes(examType: ExamType): number | null {
+    return EXAM_TYPE_TIME_LIMIT_MINUTES[examType] ?? null;
+  },
+
+  async hasInProgressAttempt(tenantId: string, userId: string, examType: ExamType): Promise<boolean> {
+    const existing = await prisma.examAttempt.findFirst({
+      where: {
+        ...tenantScope(tenantId),
+        userId,
+        examType,
+        status: "IN_PROGRESS",
+      },
+    });
+    return existing != null;
+  },
+
   async startAttempt(input: StartExamInput) {
+    const inProgress = await this.hasInProgressAttempt(input.tenantId, input.userId, input.examType);
+    if (inProgress) {
+      throw new Error("Finish or abandon your current attempt first.");
+    }
+
     let count = input.questionCount;
     if (count == null) {
-      count =
-        input.examType === "SHORT_QUIZ"
-          ? this.getRandomQuestionCountForShortQuiz()
-          : this.getDefaultQuestionCount(input.examType);
+      if (input.examType === "SHORT_QUIZ") {
+        count = this.getRandomQuestionCountForShortQuiz();
+      } else if (input.examType === "QUICK_EXAM") {
+        count = this.getRandomQuestionCountForQuickExam();
+      } else if (input.examType === "MOCK_EXAM") {
+        count = this.getRandomQuestionCountForMockExam();
+      } else {
+        count = this.getDefaultQuestionCount(input.examType);
+      }
     }
     const questions = await questionBankService.drawRandom(input.tenantId, count, {
       subjectId: input.subjectId,
