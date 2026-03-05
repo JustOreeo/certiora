@@ -13,6 +13,7 @@ datasource db {
 // ——— Enums ———
 
 enum UserRole {
+  SUPER_ADMIN
   ADMIN
   INSTRUCTOR
   STUDENT
@@ -73,7 +74,7 @@ model Tenant {
   logoUrl      String?
   primaryColor String?
   customDomain String?  @unique
-  settings     Json?    // tenant-specific settings
+  settings     Json? // tenant-specific settings
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -86,29 +87,37 @@ model Tenant {
   examAttempts     ExamAttempt[]
   srsCards         SrsCard[]
   topicPerformance TopicPerformanceSnapshot[]
+  Topic            Topic[]
+  Subtopic         Subtopic[]
+  SourceChunk      SourceChunk[]
+  invitations      Invitation[]
 }
 
 model User {
-  id        String   @id @default(cuid())
-  email     String
-  name      String?
-  image     String?
-  tenantId  String
-  role      UserRole
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                   String    @id @default(cuid())
+  email                String    @unique
+  name                 String?
+  image                String?
+  tenantId             String?
+  studentId            String?   // admin-assigned student ID (e.g. from CSV), unique per tenant
+  role                 UserRole
+  passwordHash         String? // for credentials-based auth
+  credentialsExpiresAt DateTime? // null for admins, set for students
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 
-  tenant            Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant            Tenant?                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   accounts          Account[]
   sessions          Session[]
-  questionsCreated  Question[]       @relation("CreatedBy")
-  questionsApproved Question[]       @relation("ApprovedBy")
+  questionsCreated  Question[]                 @relation("CreatedBy")
+  questionsApproved Question[]                 @relation("ApprovedBy")
   sourceMaterials   SourceMaterial[]
   examAttempts      ExamAttempt[]
   srsCards          SrsCard[]
   topicPerformance  TopicPerformanceSnapshot[]
+  sentInvitations   Invitation[]               @relation("SentInvitations")
 
-  @@unique([tenantId, email])
+  @@unique([tenantId, studentId])
   @@index([tenantId])
 }
 
@@ -154,15 +163,15 @@ model VerificationToken {
 // ——— Question bank and taxonomy ———
 
 model Subject {
-  id       String   @id @default(cuid())
-  tenantId String
-  name     String
-  order    Int      @default(0)
+  id        String   @id @default(cuid())
+  tenantId  String
+  name      String
+  order     Int      @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  tenant   Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  topics   Topic[]
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  topics    Topic[]
   questions Question[]
 
   @@index([tenantId])
@@ -177,10 +186,10 @@ model Topic {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  subject   Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
-  subtopics Subtopic[]
-  questions Question[]
+  tenant           Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  subject          Subject                    @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  subtopics        Subtopic[]
+  questions        Question[]
   topicPerformance TopicPerformanceSnapshot[]
 
   @@index([tenantId])
@@ -196,8 +205,8 @@ model Subtopic {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  topic     Topic     @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  topic     Topic      @relation(fields: [topicId], references: [id], onDelete: Cascade)
   questions Question[]
 
   @@index([tenantId])
@@ -205,35 +214,35 @@ model Subtopic {
 }
 
 model Question {
-  id                    String            @id @default(cuid())
-  tenantId               String
-  subjectId              String
-  topicId                String
-  subtopicId             String?
-  difficulty             QuestionDifficulty
-  type                   QuestionType     @default(MCQ)
-  stem                   String           @db.Text
-  options                Json             // [{ id, text, isCorrect }]
-  explanation            String?          @db.Text
-  metadata               Json?
-  sourceMaterialChunkId  String?
-  status                 QuestionStatus   @default(DRAFT)
-  createdBy              String?
-  approvedBy             String?
-  approvedAt             DateTime?
-  createdAt              DateTime         @default(now())
-  updatedAt              DateTime         @updatedAt
+  id                    String             @id @default(cuid())
+  tenantId              String
+  subjectId             String
+  topicId               String
+  subtopicId            String?
+  difficulty            QuestionDifficulty
+  type                  QuestionType       @default(MCQ)
+  stem                  String             @db.Text
+  options               Json // [{ id, text, isCorrect }]
+  explanation           String?            @db.Text
+  metadata              Json?
+  sourceMaterialChunkId String?
+  status                QuestionStatus     @default(DRAFT)
+  createdBy             String?
+  approvedBy            String?
+  approvedAt            DateTime?
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
 
-  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  subject      Subject       @relation(fields: [subjectId], references: [id], onDelete: Restrict)
-  topic        Topic         @relation(fields: [topicId], references: [id], onDelete: Restrict)
-  subtopic     Subtopic?     @relation(fields: [subtopicId], references: [id], onDelete: SetNull)
-  sourceChunk  SourceChunk?  @relation(fields: [sourceMaterialChunkId], references: [id], onDelete: SetNull)
-  creator      User?         @relation("CreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
-  approver     User?         @relation("ApprovedBy", fields: [approvedBy], references: [id], onDelete: SetNull)
-  tags         QuestionTag[]
+  tenant         Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  subject        Subject             @relation(fields: [subjectId], references: [id], onDelete: Restrict)
+  topic          Topic               @relation(fields: [topicId], references: [id], onDelete: Restrict)
+  subtopic       Subtopic?           @relation(fields: [subtopicId], references: [id], onDelete: SetNull)
+  sourceChunk    SourceChunk?        @relation(fields: [sourceMaterialChunkId], references: [id], onDelete: SetNull)
+  creator        User?               @relation("CreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  approver       User?               @relation("ApprovedBy", fields: [approvedBy], references: [id], onDelete: SetNull)
+  tags           QuestionTag[]
   attemptAnswers ExamAttemptAnswer[]
-  srsCards     SrsCard[]
+  srsCards       SrsCard[]
 
   @@index([tenantId, status])
   @@index([tenantId, subjectId, topicId])
@@ -242,7 +251,7 @@ model Question {
 }
 
 model QuestionTag {
-  id         String   @id @default(cuid())
+  id         String @id @default(cuid())
   questionId String
   tagKey     String
   tagValue   String
@@ -259,7 +268,7 @@ model SourceMaterial {
   id         String               @id @default(cuid())
   tenantId   String
   fileName   String
-  fileKey    String               // storage path (S3/R2)
+  fileKey    String // storage path (S3/R2)
   mimeType   String               @default("application/pdf")
   pageCount  Int?
   status     SourceMaterialStatus @default(UPLOADED)
@@ -287,7 +296,7 @@ model SourceChunk {
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
-  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant    Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   source    SourceMaterial @relation(fields: [sourceMaterialId], references: [id], onDelete: Cascade)
   questions Question[]
 
@@ -296,7 +305,7 @@ model SourceChunk {
 }
 
 model IngestionJob {
-  id               String            @id @default(cuid())
+  id               String             @id @default(cuid())
   tenantId         String
   sourceMaterialId String
   jobType          IngestionJobType
@@ -305,12 +314,12 @@ model IngestionJob {
   result           Json?
   startedAt        DateTime?
   completedAt      DateTime?
-  error            String?           @db.Text
-  createdAt        DateTime         @default(now())
-  updatedAt        DateTime         @updatedAt
+  error            String?            @db.Text
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
 
-  tenant  Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  source  SourceMaterial @relation(fields: [sourceMaterialId], references: [id], onDelete: Cascade)
+  tenant Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  source SourceMaterial @relation(fields: [sourceMaterialId], references: [id], onDelete: Cascade)
 
   @@index([tenantId])
   @@index([sourceMaterialId, jobType])
@@ -320,16 +329,16 @@ model IngestionJob {
 // ——— Exams and attempts ———
 
 model ExamDefinition {
-  id              String   @id @default(cuid())
-  tenantId        String
-  name            String
-  examType        ExamType
-  questionCount   Int
-  subjectId       String?
-  topicId        String?
+  id               String   @id @default(cuid())
+  tenantId         String
+  name             String
+  examType         ExamType
+  questionCount    Int
+  subjectId        String?
+  topicId          String?
   timeLimitMinutes Int?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
@@ -345,7 +354,7 @@ model ExamAttempt {
   status           ExamAttemptStatus @default(IN_PROGRESS)
   startedAt        DateTime          @default(now())
   submittedAt      DateTime?
-  score            Float?            // null until submitted
+  score            Float? // null until submitted
   timeSpentSeconds Int?
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
@@ -360,18 +369,18 @@ model ExamAttempt {
 }
 
 model ExamAttemptAnswer {
-  id                String   @id @default(cuid())
-  attemptId         String
-  questionId        String
+  id               String   @id @default(cuid())
+  attemptId        String
+  questionId       String
   selectedOptionId String
-  isCorrect         Boolean
-  timeSpentSeconds  Int?
-  order             Int
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  isCorrect        Boolean
+  timeSpentSeconds Int?
+  order            Int
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   attempt  ExamAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
-  question Question   @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  question Question    @relation(fields: [questionId], references: [id], onDelete: Cascade)
 
   @@unique([attemptId, questionId])
   @@index([attemptId])
@@ -381,17 +390,17 @@ model ExamAttemptAnswer {
 // ——— SRS ———
 
 model SrsCard {
-  id             String   @id @default(cuid())
+  id             String    @id @default(cuid())
   tenantId       String
   userId         String
   questionId     String
-  easeFactor    Float
-  interval       Int      // days
-  repetitions    Int      @default(0)
+  easeFactor     Float
+  interval       Int // days
+  repetitions    Int       @default(0)
   nextReviewAt   DateTime
   lastReviewedAt DateTime?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -402,18 +411,42 @@ model SrsCard {
   @@index([userId, nextReviewAt])
 }
 
+// ——— Invitations ———
+
+model Invitation {
+  id         String    @id @default(cuid())
+  token      String    @unique @default(cuid())
+  email      String
+  role       UserRole  // ADMIN or STUDENT
+  tenantId   String?   // null for ADMIN invitations (tenant created on acceptance)
+  tenantName String?   // for ADMIN invitations
+  tenantSlug String?   // for ADMIN invitations
+  invitedBy  String
+  expiresAt  DateTime
+  usedAt     DateTime? // null = available; set = consumed (one-time only)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  tenant  Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  inviter User    @relation("SentInvitations", fields: [invitedBy], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@index([tenantId])
+  @@index([email])
+}
+
 // ——— Analytics (optional materialized) ———
 
 model TopicPerformanceSnapshot {
-  id            String   @id @default(cuid())
+  id            String    @id @default(cuid())
   tenantId      String
   userId        String
   topicId       String
-  attemptCount  Int      @default(0)
-  correctCount  Int      @default(0)
+  attemptCount  Int       @default(0)
+  correctCount  Int       @default(0)
   lastAttemptAt DateTime?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)

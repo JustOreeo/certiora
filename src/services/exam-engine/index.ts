@@ -26,9 +26,19 @@ export const examEngineService = {
     return config?.default ?? 20;
   },
 
+  getRandomQuestionCountForShortQuiz(): number {
+    const { min, max } = EXAM_TYPE_QUESTION_COUNTS.SHORT_QUIZ;
+    return Math.floor(Math.random() * (max - min + 1)) + min;
+  },
+
   async startAttempt(input: StartExamInput) {
-    const count =
-      input.questionCount ?? this.getDefaultQuestionCount(input.examType);
+    let count = input.questionCount;
+    if (count == null) {
+      count =
+        input.examType === "SHORT_QUIZ"
+          ? this.getRandomQuestionCountForShortQuiz()
+          : this.getDefaultQuestionCount(input.examType);
+    }
     const questions = await questionBankService.drawRandom(input.tenantId, count, {
       subjectId: input.subjectId,
       topicId: input.topicId,
