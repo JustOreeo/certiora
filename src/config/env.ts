@@ -6,7 +6,11 @@ const envSchema = z.object({
   NEXTAUTH_URL: z.string().url().optional(),
   NEXTAUTH_SECRET: z.string().optional(),
   REDIS_URL: z.string().optional(),
+  S3_ENDPOINT: z.string().optional(),
+  S3_ACCESS_KEY_ID: z.string().optional(),
+  S3_SECRET_ACCESS_KEY: z.string().optional(),
   S3_BUCKET: z.string().optional(),
+  S3_REGION: z.string().optional(),
   OPENAI_API_KEY: z.string().optional(),
 });
 
@@ -16,7 +20,11 @@ const parsed = envSchema.safeParse({
   NEXTAUTH_URL: process.env.NEXTAUTH_URL,
   NEXTAUTH_SECRET: process.env.NEXTAUTH_SECRET,
   REDIS_URL: process.env.REDIS_URL,
+  S3_ENDPOINT: process.env.S3_ENDPOINT,
+  S3_ACCESS_KEY_ID: process.env.S3_ACCESS_KEY_ID,
+  S3_SECRET_ACCESS_KEY: process.env.S3_SECRET_ACCESS_KEY,
   S3_BUCKET: process.env.S3_BUCKET,
+  S3_REGION: process.env.S3_REGION,
   OPENAI_API_KEY: process.env.OPENAI_API_KEY,
 });
 
@@ -29,4 +37,11 @@ export const config = {
   ...parsed.data,
   nodeEnv: parsed.data.NODE_ENV,
   redisUrl: parsed.data.REDIS_URL ?? undefined,
+  s3: {
+    endpoint: parsed.data.S3_ENDPOINT,
+    accessKeyId: parsed.data.S3_ACCESS_KEY_ID,
+    secretAccessKey: parsed.data.S3_SECRET_ACCESS_KEY,
+    bucket: parsed.data.S3_BUCKET,
+    region: parsed.data.S3_REGION ?? "auto",
+  },
 };

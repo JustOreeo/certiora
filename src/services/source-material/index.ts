@@ -97,4 +97,24 @@ export const sourceMaterialService = {
       where: { id: chunkId, ...tenantScope(tenantId) },
     });
   },
+
+  async updateFileKey(tenantId: string, id: string, fileKey: string) {
+    return prisma.sourceMaterial.updateMany({
+      where: { id, ...tenantScope(tenantId) },
+      data: { fileKey },
+    });
+  },
+
+  async updatePageCount(tenantId: string, id: string, pageCount: number) {
+    return prisma.sourceMaterial.updateMany({
+      where: { id, ...tenantScope(tenantId) },
+      data: { pageCount },
+    });
+  },
+
+  async delete(tenantId: string, id: string) {
+    return prisma.sourceMaterial.deleteMany({
+      where: { id, ...tenantScope(tenantId) },
+    });
+  },
 };
