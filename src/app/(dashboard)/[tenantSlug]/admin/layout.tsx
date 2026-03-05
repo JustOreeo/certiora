@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams, usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
 import { ReactNode } from "react";
+import { useTenantBranding, darkenHex } from "@/contexts/TenantBrandingContext";
 
 // ── Icons ─────────────────────────────────────────────────────────────────────
 
@@ -68,6 +69,18 @@ function IconBarChart() {
   );
 }
 
+function IconPalette() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="13.5" cy="6.5" r="0.5" fill="currentColor" />
+      <circle cx="17.5" cy="10.5" r="0.5" fill="currentColor" />
+      <circle cx="8.5" cy="7.5" r="0.5" fill="currentColor" />
+      <circle cx="6.5" cy="12.5" r="0.5" fill="currentColor" />
+      <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.9 0 1.75-.2 2.5-.5" />
+    </svg>
+  );
+}
+
 function IconLogOut() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
@@ -78,10 +91,12 @@ function IconLogOut() {
   );
 }
 
-function CertioraLogoMark() {
+const DEFAULT_PRIMARY = "#4B4EFC";
+
+function CertioraLogoMark({ primaryColor }: { primaryColor: string }) {
   return (
     <svg width="28" height="28" viewBox="0 0 40 40" fill="none">
-      <rect width="40" height="40" rx="9" fill="#4B4EFC" />
+      <rect width="40" height="40" rx="9" fill={primaryColor} />
       <path
         d="M20 8L11 12V19C11 23.4 15 27.5 20 29C25 27.5 29 23.4 29 19V12L20 8Z"
         fill="none"
@@ -113,6 +128,16 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   const params = useParams();
   const pathname = usePathname();
   const tenantSlug = params.tenantSlug as string;
+  const branding = useTenantBranding();
+  const primary = branding.primaryColor ?? DEFAULT_PRIMARY;
+  const sidebarCssVars = branding.primaryColor
+    ? {
+        ["--color-primary" as string]: primary,
+        ["--color-brand-500" as string]: primary,
+        ["--color-brand-600" as string]: darkenHex(primary, 0.08),
+        ["--color-brand-700" as string]: darkenHex(primary, 0.16),
+      }
+    : undefined;
 
   const navItems: NavItem[] = [
     { href: `/${tenantSlug}/admin`, label: "Overview", icon: <IconGrid />, exact: true },
@@ -121,17 +146,25 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     { href: `/${tenantSlug}/admin/students`, label: "Students", icon: <IconUsers /> },
     { href: `/${tenantSlug}/admin/analytics`, label: "Analytics", icon: <IconBarChart /> },
     { href: `/${tenantSlug}/admin/source-materials`, label: "Source Materials", icon: <IconBookOpen /> },
+    { href: `/${tenantSlug}/admin/branding`, label: "Branding", icon: <IconPalette /> },
   ];
 
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div className="flex h-screen overflow-hidden" style={sidebarCssVars}>
       {/* ── Sidebar ── */}
       <aside className="w-[240px] flex-shrink-0 flex flex-col bg-surface-sidebar">
         {/* Brand */}
         <div className="h-[60px] flex items-center px-5 gap-3 shrink-0">
-          <CertioraLogoMark />
-          <span className="font-semibold text-[15px] leading-none" style={{ color: "#FFFFFF" }}>
-            Certiora
+          {branding.logoUrl ? (
+            <span className="relative w-7 h-7 flex-shrink-0 flex items-center justify-center">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={branding.logoUrl} alt="" className="max-w-full max-h-full object-contain" />
+            </span>
+          ) : (
+            <CertioraLogoMark primaryColor={primary} />
+          )}
+          <span className="font-semibold text-[15px] leading-none text-sidebar-active">
+            {branding.name}
           </span>
         </div>
 
