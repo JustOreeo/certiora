@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter, useParams } from "next/navigation";
+import { toUserMessage } from "@/lib/errors";
 
 type Option = { id: string; text: string };
 type Question = {
@@ -100,11 +101,12 @@ export default function TakeExamPage() {
         const current = data.answers[currentIndex];
         setSelectedOption(current.selectedOptionId || "");
       } else {
-        alert(data.error || "Failed to load attempt");
+        alert(toUserMessage(data, "This exam could not be loaded. Returning to exams."));
         router.push(`/${tenantSlug}/exams`);
       }
     } catch (error) {
       console.error("Failed to load attempt:", error);
+      alert(toUserMessage(error, "This exam could not be loaded. Returning to exams."));
       router.push(`/${tenantSlug}/exams`);
     } finally {
       setLoading(false);
@@ -208,7 +210,7 @@ export default function TakeExamPage() {
   return (
     <div className="min-h-screen bg-surface-base">
       {/* Minimal header */}
-      <header className="h-[56px] bg-surface-card border-b border-border px-6 flex items-center justify-between gap-4">
+      <header className="min-h-[56px] bg-surface-card border-b border-border px-4 sm:px-6 flex items-center justify-between gap-2 sm:gap-4">
         <div className="flex items-center gap-3 min-w-0">
           <span className="text-sm font-semibold text-heading shrink-0">{attempt.examType.replace("_", " ")}</span>
           <span className="text-muted text-sm shrink-0">·</span>
@@ -232,7 +234,7 @@ export default function TakeExamPage() {
         </div>
       </header>
 
-      <div className="px-8 py-8">
+      <div className="px-4 sm:px-6 md:px-8 py-6 sm:py-8">
         {/* Question card */}
         <div className="bg-surface-card border border-border rounded-xl shadow-sm px-6 py-6 mb-4">
           <p className="text-[15px] font-medium text-body leading-relaxed mb-6">
@@ -244,7 +246,7 @@ export default function TakeExamPage() {
               return (
                 <label
                   key={opt.id}
-                  className={`flex items-center gap-3 p-3.5 border rounded-xl cursor-pointer transition-all ${
+                  className={`flex items-center gap-3 min-h-[44px] p-3.5 border rounded-xl cursor-pointer transition-all ${
                     isSelected
                       ? "border-primary bg-primary-subtle"
                       : "border-border bg-surface-card hover:border-border-strong hover:bg-surface-base"
@@ -284,7 +286,7 @@ export default function TakeExamPage() {
               }
             }}
             disabled={currentIndex === 0 || timeExpired}
-            className="h-9 px-4 rounded-lg text-sm font-medium border border-border text-secondary hover:border-border-strong hover:text-body disabled:opacity-40 transition-colors"
+            className="min-h-[44px] px-4 py-2.5 rounded-lg text-sm font-medium border border-border text-secondary hover:border-border-strong hover:text-body disabled:opacity-40 transition-colors"
           >
             Previous
           </button>
@@ -293,7 +295,7 @@ export default function TakeExamPage() {
             <button
               onClick={submitExam}
               disabled={submitting || !selectedOption || timeExpired}
-              className="inline-flex items-center gap-2 h-9 px-5 rounded-lg text-sm font-medium bg-success text-white hover:opacity-90 disabled:opacity-50 transition-opacity"
+              className="inline-flex items-center justify-center gap-2 min-h-[44px] px-5 py-2.5 rounded-lg text-sm font-medium bg-success text-white hover:opacity-90 disabled:opacity-50 transition-opacity"
             >
               {submitting ? <><Spinner /> Submitting…</> : "Submit exam"}
             </button>
@@ -301,7 +303,7 @@ export default function TakeExamPage() {
             <button
               onClick={submitAnswer}
               disabled={!selectedOption || timeExpired}
-              className="h-9 px-5 rounded-lg text-sm font-medium bg-primary text-inverse hover:bg-primary-hover disabled:opacity-50 transition-colors"
+              className="min-h-[44px] px-5 py-2.5 rounded-lg text-sm font-medium bg-primary text-inverse hover:bg-primary-hover disabled:opacity-50 transition-colors"
             >
               Next
             </button>

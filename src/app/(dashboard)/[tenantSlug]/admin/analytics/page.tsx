@@ -178,7 +178,16 @@ export default function AdminAnalyticsPage() {
 
       {!data && !loading && (
         <div className="bg-surface-card border border-border rounded-xl px-6 py-12 text-center shadow-sm">
-          <p className="text-sm text-secondary">Failed to load analytics.</p>
+          <p className="text-sm text-secondary mb-4">
+            We couldn’t load analytics. This might be a temporary issue.
+          </p>
+          <button
+            type="button"
+            onClick={() => { setLoading(true); loadAnalytics(); }}
+            className="inline-flex h-10 items-center px-5 rounded-lg text-sm font-semibold bg-primary text-inverse hover:bg-primary-hover transition-colors"
+          >
+            Try again
+          </button>
         </div>
       )}
     </div>

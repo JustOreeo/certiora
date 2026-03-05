@@ -33,6 +33,11 @@ export default function StudentNav({
     pathname === `${slugSegment}/flashcards` ||
     pathname === `${slugSegment}/analytics`;
 
+  // Distraction-free: no header/nav when taking an active exam (exams/:id, not review)
+  const isActiveExam =
+    pathname.startsWith(`${slugSegment}/exams/`) &&
+    !pathname.includes("/review");
+
   const primary = branding.primaryColor ?? DEFAULT_PRIMARY;
   const cssVars = branding.primaryColor
     ? {
@@ -50,11 +55,20 @@ export default function StudentNav({
     return <>{children}</>;
   }
 
+  // During active exam attempt, render only content (minimal header is inside the exam page)
+  if (isActiveExam) {
+    return (
+      <div className="min-h-screen bg-surface-base" style={cssVars}>
+        {children}
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-surface-base" style={cssVars}>
-      <header className="h-[60px] bg-surface-card border-b border-border flex items-center px-6 justify-between">
-        <div className="flex items-center gap-3">
-          <Link href={`/${tenantSlug}/exams`} className="flex items-center gap-3">
+      <header className="min-h-[60px] bg-surface-card border-b border-border flex items-center px-4 sm:px-6 justify-between gap-2">
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+          <Link href={`/${tenantSlug}/exams`} className="flex items-center gap-2 sm:gap-3 min-w-0 shrink-0">
             {branding.logoUrl ? (
               <span className="relative w-7 h-7 flex-shrink-0 flex items-center justify-center">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -65,7 +79,7 @@ export default function StudentNav({
             )}
             <span className="font-semibold text-[15px] text-heading">{branding.name}</span>
           </Link>
-          <nav className="flex items-center gap-6 ml-6">
+          <nav className="flex items-center gap-4 sm:gap-6 ml-2 sm:ml-6 shrink-0">
             <Link
               href={`/${tenantSlug}/exams`}
               className={`text-sm font-medium transition-colors ${
@@ -100,7 +114,8 @@ export default function StudentNav({
         </div>
         <button
           onClick={() => signOut({ callbackUrl: "/login" })}
-          className="text-sm text-secondary hover:text-body transition-colors"
+          className="min-h-[44px] min-w-[44px] flex items-center justify-center py-2 px-2 -my-1 -mr-1 text-sm text-secondary hover:text-body transition-colors rounded-lg hover:bg-surface-hover"
+          aria-label="Sign out"
         >
           Sign out
         </button>

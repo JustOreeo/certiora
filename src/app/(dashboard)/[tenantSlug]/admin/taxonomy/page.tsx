@@ -216,7 +216,16 @@ export default function TaxonomyPage() {
         }
       >
         {subjects.length === 0 ? (
-          <p className="px-5 py-6 text-sm text-secondary text-center">No subjects yet.</p>
+          <div className="px-5 py-6 text-center">
+            <p className="text-sm text-secondary mb-3">No subjects yet.</p>
+            <button
+              type="button"
+              onClick={() => { setCreating(creating === "subject" ? null : "subject"); setNewItem({ name: "", subjectId: "", topicId: "" }); }}
+              className="text-sm font-medium text-primary hover:underline"
+            >
+              Add first subject
+            </button>
+          </div>
         ) : (
           <ul>
             {subjects.map((s, i) => (
@@ -279,7 +288,17 @@ export default function TaxonomyPage() {
         }
       >
         {topics.length === 0 ? (
-          <p className="px-5 py-6 text-sm text-secondary text-center">No topics yet.</p>
+          <div className="px-5 py-6 text-center">
+            <p className="text-sm text-secondary mb-3">No topics yet.</p>
+            <button
+              type="button"
+              onClick={() => { setCreating(creating === "topic" ? null : "topic"); setNewItem({ name: "", subjectId: subjects[0]?.id ?? "", topicId: "" }); }}
+              className="text-sm font-medium text-primary hover:underline"
+              disabled={subjects.length === 0}
+            >
+              Add first topic
+            </button>
+          </div>
         ) : (
           <ul>
             {topics.map((t, i) => {
@@ -350,7 +369,17 @@ export default function TaxonomyPage() {
         }
       >
         {subtopics.length === 0 ? (
-          <p className="px-5 py-6 text-sm text-secondary text-center">No subtopics yet.</p>
+          <div className="px-5 py-6 text-center">
+            <p className="text-sm text-secondary mb-3">No subtopics yet.</p>
+            <button
+              type="button"
+              onClick={() => { setCreating(creating === "subtopic" ? null : "subtopic"); setNewItem({ name: "", subjectId: "", topicId: topics[0]?.id ?? "" }); }}
+              className="text-sm font-medium text-primary hover:underline"
+              disabled={topics.length === 0}
+            >
+              Add first subtopic
+            </button>
+          </div>
         ) : (
           <ul>
             {subtopics.map((st, i) => {

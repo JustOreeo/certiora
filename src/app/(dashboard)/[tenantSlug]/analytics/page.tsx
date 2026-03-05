@@ -111,7 +111,7 @@ export default function AnalyticsPage() {
 
   return (
     <div>
-      <div className="px-8 py-8">
+        <div className="px-4 sm:px-6 md:px-8 py-6 sm:py-8">
         <h1 className="text-[22px] font-semibold text-heading mb-2">My Analytics</h1>
         <p className="text-sm text-secondary mb-6">
           Topic performance and exam history

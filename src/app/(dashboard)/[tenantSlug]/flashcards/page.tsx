@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
+import { toUserMessage } from "@/lib/errors";
 
 type Option = { id: string; text: string; isCorrect?: boolean };
 type Question = {
@@ -95,7 +96,7 @@ export default function FlashcardsPage() {
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        alert(data.error || "Failed to grade card");
+        alert(toUserMessage(data, "Failed to grade card. Please try again."));
         return;
       }
       setCards((prev) => prev.filter((c) => c.questionId !== questionId));
@@ -114,7 +115,7 @@ export default function FlashcardsPage() {
       }
     } catch (error) {
       console.error("Grade error:", error);
-      alert("Failed to grade card");
+      alert(toUserMessage(error, "Failed to grade card. Please try again."));
     } finally {
       setGrading(false);
     }
@@ -134,7 +135,7 @@ export default function FlashcardsPage() {
 
   return (
     <div>
-      <div className="px-8 py-8 max-w-2xl mx-auto">
+      <div className="px-4 sm:px-6 md:px-8 py-6 sm:py-8 max-w-2xl mx-auto">
         {summary && (
           <p className="text-sm text-secondary mb-6">
             Reviewed this session: {reviewedThisSession}
@@ -226,7 +227,7 @@ export default function FlashcardsPage() {
                   type="button"
                   disabled={grading}
                   onClick={() => gradeCard(currentCard.questionId, quality)}
-                  className="px-4 py-2 rounded-lg text-sm font-medium border border-border bg-surface-card hover:bg-surface-base disabled:opacity-60 transition-colors"
+                  className="min-h-[44px] px-4 py-2.5 rounded-lg text-sm font-medium border border-border bg-surface-card hover:bg-surface-base disabled:opacity-60 transition-colors"
                 >
                   {label}
                 </button>

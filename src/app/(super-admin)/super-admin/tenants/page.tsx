@@ -53,8 +53,16 @@ export default function TenantsPage() {
             <Spinner />
           </div>
         ) : tenants.length === 0 ? (
-          <div className="px-5 py-12 text-center text-sm text-secondary">
-            No tenants yet. Invite an admin to create the first one.
+          <div className="px-5 py-12 text-center">
+            <p className="text-sm text-secondary mb-4">
+              No tenants yet. Invite an admin to create the first review center.
+            </p>
+            <Link
+              href="/super-admin/invitations"
+              className="inline-flex h-10 items-center px-5 rounded-lg text-sm font-semibold bg-primary text-inverse hover:bg-primary-hover transition-colors"
+            >
+              Send invitation
+            </Link>
           </div>
         ) : (
           <div className="overflow-x-auto">
