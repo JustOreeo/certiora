@@ -208,6 +208,29 @@ export const questionBankService = {
     });
   },
 
+  /**
+   * Delete a question. Fails if the question is part of any IN_PROGRESS exam attempt.
+   */
+  async delete(tenantId: string, questionId: string) {
+    const inProgressUse = await prisma.examAttemptAnswer.findFirst({
+      where: {
+        questionId,
+        attempt: {
+          status: "IN_PROGRESS",
+          ...tenantScope(tenantId),
+        },
+      },
+    });
+    if (inProgressUse) {
+      throw new Error(
+        "Cannot delete question: it is part of an exam attempt in progress. Wait for the attempt to be submitted or abandon it first."
+      );
+    }
+    return prisma.question.deleteMany({
+      where: { id: questionId, ...tenantScope(tenantId) },
+    });
+  },
+
   async drawRandom(
     tenantId: string,
     count: number,

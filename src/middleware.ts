@@ -32,6 +32,25 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(login);
     }
     const tenantSlug = match[1];
+
+    // Tenant isolation: user must not access another tenant's slug
+    if (token.tenantId && token.tenantSlug && token.tenantSlug !== tenantSlug) {
+      const correctPath = `/${token.tenantSlug}${pathname.slice(tenantSlug.length)}`;
+      return NextResponse.redirect(new URL(correctPath, request.url));
+    }
+
+    // Block expired student credentials at all entry points (not just login)
+    if (
+      token.role === "STUDENT" &&
+      token.credentialsExpiresAt &&
+      new Date(token.credentialsExpiresAt as string) < new Date()
+    ) {
+      const login = new URL("/login", request.url);
+      login.searchParams.set("error", "CredentialsExpired");
+      login.searchParams.set("callbackUrl", pathname);
+      return NextResponse.redirect(login);
+    }
+
     if (token.tenantId) {
       const res = NextResponse.next();
       res.headers.set("x-tenant-id", token.tenantId as string);

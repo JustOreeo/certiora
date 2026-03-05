@@ -6,6 +6,7 @@ declare module "next-auth" {
     tenantId?: string;
     tenantSlug?: string;
     role?: string;
+    credentialsExpiresAt?: string;
   }
   interface Session {
     user: { id: string; email?: string | null; name?: string | null; image?: string | null };
@@ -21,5 +22,6 @@ declare module "next-auth/jwt" {
     tenantId?: string;
     tenantSlug?: string;
     role?: string;
+    credentialsExpiresAt?: string;
   }
 }
