@@ -42,3 +42,8 @@ export const submitAnswerSchema = z.object({
   selectedOptionId: z.string(),
   timeSpentSeconds: z.number().int().min(0).optional(),
 });
+
+export const gradeCardSchema = z.object({
+  questionId: z.string().min(1),
+  quality: z.number().int().min(0).max(5),
+});

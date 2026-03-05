@@ -1,6 +1,7 @@
 import type { ExamType } from "@prisma/client";
 import { prisma, tenantScope } from "@/lib/db";
 import { questionBankService } from "@/services/question-bank";
+import { srsService } from "@/services/srs";
 import { EXAM_TYPE_QUESTION_COUNTS, EXAM_TYPE_TIME_LIMIT_MINUTES } from "@/config/constants";
 
 export type StartExamInput = {
@@ -183,6 +184,12 @@ export const examEngineService = {
         timeSpentSeconds,
       },
     });
+
+    // Seed SRS deck from wrong answers (idempotent: getOrCreateCard)
+    const wrongAnswers = attempt.answers.filter((a) => !a.isCorrect);
+    for (const a of wrongAnswers) {
+      await srsService.getOrCreateCard(tenantId, userId, a.questionId);
+    }
 
     return this.getAttempt(tenantId, attemptId, userId);
   },
