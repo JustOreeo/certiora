@@ -1,4 +1,5 @@
 import { ReactNode } from "react";
+import StudentNav from "./StudentNav";
 
 export default function TenantLayout({
   children,
@@ -8,8 +9,10 @@ export default function TenantLayout({
   params: { tenantSlug: string };
 }) {
   return (
-    <div data-tenant-slug={params.tenantSlug}>
-      {children}
-    </div>
+    <StudentNav tenantSlug={params.tenantSlug}>
+      <div data-tenant-slug={params.tenantSlug}>
+        {children}
+      </div>
+    </StudentNav>
   );
 }

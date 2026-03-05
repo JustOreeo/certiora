@@ -122,4 +122,29 @@ export const srsService = {
     ]);
     return { items, total, page, pageSize };
   },
+
+  async getSummary(tenantId: string, userId: string) {
+    const now = new Date();
+    const endOfToday = new Date(now);
+    endOfToday.setUTCHours(23, 59, 59, 999);
+    const startOfTomorrow = new Date(endOfToday);
+    startOfTomorrow.setUTCMilliseconds(startOfTomorrow.getUTCMilliseconds() + 1);
+    const endOfTomorrow = new Date(startOfTomorrow);
+    endOfTomorrow.setUTCHours(23, 59, 59, 999);
+
+    const where = { ...tenantScope(tenantId), userId };
+    const [dueToday, dueTomorrow, total] = await Promise.all([
+      prisma.srsCard.count({
+        where: { ...where, nextReviewAt: { lte: endOfToday } },
+      }),
+      prisma.srsCard.count({
+        where: {
+          ...where,
+          nextReviewAt: { gte: startOfTomorrow, lte: endOfTomorrow },
+        },
+      }),
+      prisma.srsCard.count({ where }),
+    ]);
+    return { dueToday, dueTomorrow, total };
+  },
 };

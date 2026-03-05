@@ -3,20 +3,20 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { srsService } from "@/services/srs";
 
-/** GET /api/srs - returns due cards (same as GET /api/srs/cards?dueOnly=true) for backwards compatibility */
 export async function GET() {
   const session = await getServerSession(authOptions);
   if (!session?.tenantId || !session.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
   try {
-    const cards = await srsService.getDueCards(
+    const summary = await srsService.getSummary(
       session.tenantId,
       session.user.id
     );
-    return NextResponse.json(cards);
+    return NextResponse.json(summary);
   } catch (error) {
-    console.error("SRS error:", error);
+    console.error("SRS summary error:", error);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

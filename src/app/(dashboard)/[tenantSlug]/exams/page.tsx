@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter, useParams } from "next/navigation";
-import { signOut } from "next-auth/react";
 
 type Attempt = {
   id: string;
@@ -47,16 +46,6 @@ function IconChevronRight() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
       <polyline points="9 18 15 12 9 6" />
-    </svg>
-  );
-}
-
-function CertioraLogoMark() {
-  return (
-    <svg width="28" height="28" viewBox="0 0 40 40" fill="none">
-      <rect width="40" height="40" rx="9" fill="#4B4EFC" />
-      <path d="M20 8L11 12V19C11 23.4 15 27.5 20 29C25 27.5 29 23.4 29 19V12L20 8Z" fill="none" stroke="white" strokeWidth="1.5" strokeLinejoin="round" />
-      <path d="M16 19.5L18.5 22L24 17" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -116,21 +105,7 @@ export default function ExamsPage() {
   const inProgress = attempts.filter((a) => a.status !== "SUBMITTED");
 
   return (
-    <div className="min-h-screen bg-surface-base">
-      {/* Top nav */}
-      <header className="h-[60px] bg-surface-card border-b border-border flex items-center px-6 justify-between">
-        <div className="flex items-center gap-3">
-          <CertioraLogoMark />
-          <span className="font-semibold text-[15px] text-heading">Certiora</span>
-        </div>
-        <button
-          onClick={() => signOut({ callbackUrl: "/login" })}
-          className="text-sm text-secondary hover:text-body transition-colors"
-        >
-          Sign out
-        </button>
-      </header>
-
+    <div>
       <div className="px-8 py-8">
         {/* Page header */}
         <div className="mb-7">
