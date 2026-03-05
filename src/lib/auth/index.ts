@@ -1,39 +1,83 @@
 import type { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
-import { PrismaAdapter } from "@next-auth/prisma-adapter";
+import { compare } from "bcryptjs";
 import { prisma } from "@/lib/db";
-import type { Session } from "next-auth";
 
 export const authOptions: NextAuthOptions = {
-  adapter: PrismaAdapter(prisma),
-  session: { strategy: "database", maxAge: 30 * 24 * 60 * 60 },
+  session: { strategy: "jwt", maxAge: 30 * 24 * 60 * 60 },
   pages: {
     signIn: "/login",
   },
   callbacks: {
-    session: async ({ session, user }) => {
+    async jwt({ token, user }) {
+      if (user) {
+        token.id = user.id;
+        token.tenantId = user.tenantId;
+        token.tenantSlug = user.tenantSlug;
+        token.role = user.role;
+      }
+      return token;
+    },
+    async session({ session, token }) {
       if (session.user) {
-        session.user.id = user.id;
-        const dbUser = await prisma.user.findUnique({
-          where: { id: user.id },
-          select: { tenantId: true, role: true },
-        });
-        if (dbUser) {
-          (session as Session).tenantId = dbUser.tenantId;
-          (session as Session).role = dbUser.role;
-        }
+        session.user.id = token.id as string;
+        session.tenantId = token.tenantId as string | undefined;
+        session.tenantSlug = token.tenantSlug as string | undefined;
+        session.role = token.role as string;
       }
       return session;
     },
   },
   providers: [
-    // Placeholder: replace with real providers (Google, GitHub, or Credentials with tenant slug).
     CredentialsProvider({
       id: "credentials",
       name: "Credentials",
-      credentials: { email: { label: "Email", type: "email" }, password: { label: "Password", type: "password" }, tenantSlug: { label: "Tenant", type: "text" } },
-      async authorize() {
-        return null;
+      credentials: {
+        email: { label: "Email", type: "email" },
+        password: { label: "Password", type: "password" },
+      },
+      async authorize(credentials) {
+        if (!credentials?.email || !credentials?.password) {
+          return null;
+        }
+
+        const user = await prisma.user.findUnique({
+          where: { email: credentials.email },
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            image: true,
+            tenantId: true,
+            role: true,
+            passwordHash: true,
+            credentialsExpiresAt: true,
+            tenant: { select: { slug: true } },
+          },
+        });
+
+        if (!user || !user.passwordHash) {
+          return null;
+        }
+
+        if (user.credentialsExpiresAt && user.credentialsExpiresAt < new Date()) {
+          throw new Error("CredentialsExpired");
+        }
+
+        const isValid = await compare(credentials.password, user.passwordHash);
+        if (!isValid) {
+          return null;
+        }
+
+        return {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          image: user.image,
+          tenantId: user.tenantId ?? undefined,
+          tenantSlug: user.tenant?.slug ?? undefined,
+          role: user.role,
+        };
       },
     }),
   ],

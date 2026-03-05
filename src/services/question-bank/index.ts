@@ -27,6 +27,83 @@ export type QuestionFilter = {
 };
 
 export const questionBankService = {
+  // ——— Taxonomy methods ———
+  async createSubject(tenantId: string, name: string, order = 0) {
+    return prisma.subject.create({
+      data: { tenantId, name, order },
+    });
+  },
+
+  async createTopic(tenantId: string, subjectId: string, name: string, order = 0) {
+    return prisma.topic.create({
+      data: { tenantId, subjectId, name, order },
+    });
+  },
+
+  async createSubtopic(tenantId: string, topicId: string, name: string, order = 0) {
+    return prisma.subtopic.create({
+      data: { tenantId, topicId, name, order },
+    });
+  },
+
+  async updateSubject(tenantId: string, subjectId: string, name: string) {
+    return prisma.subject.updateMany({
+      where: { id: subjectId, ...tenantScope(tenantId) },
+      data: { name },
+    });
+  },
+
+  async deleteSubject(tenantId: string, subjectId: string) {
+    const count = await prisma.question.count({
+      where: { subjectId, ...tenantScope(tenantId) },
+    });
+    if (count > 0) {
+      throw new Error("Cannot delete subject that has questions. Move or delete the questions first.");
+    }
+    return prisma.subject.deleteMany({
+      where: { id: subjectId, ...tenantScope(tenantId) },
+    });
+  },
+
+  async updateTopic(tenantId: string, topicId: string, name: string) {
+    return prisma.topic.updateMany({
+      where: { id: topicId, ...tenantScope(tenantId) },
+      data: { name },
+    });
+  },
+
+  async deleteTopic(tenantId: string, topicId: string) {
+    const count = await prisma.question.count({
+      where: { topicId, ...tenantScope(tenantId) },
+    });
+    if (count > 0) {
+      throw new Error("Cannot delete topic that has questions. Move or delete the questions first.");
+    }
+    return prisma.topic.deleteMany({
+      where: { id: topicId, ...tenantScope(tenantId) },
+    });
+  },
+
+  async updateSubtopic(tenantId: string, subtopicId: string, name: string) {
+    return prisma.subtopic.updateMany({
+      where: { id: subtopicId, ...tenantScope(tenantId) },
+      data: { name },
+    });
+  },
+
+  async deleteSubtopic(tenantId: string, subtopicId: string) {
+    const count = await prisma.question.count({
+      where: { subtopicId, ...tenantScope(tenantId) },
+    });
+    if (count > 0) {
+      throw new Error("Cannot delete subtopic that has questions. Move or delete the questions first.");
+    }
+    return prisma.subtopic.deleteMany({
+      where: { id: subtopicId, ...tenantScope(tenantId) },
+    });
+  },
+
+  // ——— Question methods ———
   async list(tenantId: string, filter: QuestionFilter = {}) {
     const { subjectId, topicId, difficulty, status, page = 1, pageSize = 20 } = filter;
     const where: Prisma.QuestionWhereInput = { ...tenantScope(tenantId) };
