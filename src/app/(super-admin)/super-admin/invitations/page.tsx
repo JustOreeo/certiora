@@ -19,42 +19,65 @@ type NewInviteForm = {
   expiresInDays: number;
 };
 
-function statusBadge(inv: Invitation) {
+function Spinner() {
+  return (
+    <svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none">
+      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeOpacity="0.25" />
+      <path d="M4 12a8 8 0 018-8" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function IconCopy() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="9" y="9" width="13" height="13" rx="2" />
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+    </svg>
+  );
+}
+
+function StatusBadge({ inv }: { inv: Invitation }) {
   if (inv.usedAt) {
-    return <span className="px-2 py-0.5 bg-green-100 text-green-700 rounded text-xs">Used</span>;
+    return (
+      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border bg-success-bg text-success border-success-border">
+        Used
+      </span>
+    );
   }
   if (new Date(inv.expiresAt) < new Date()) {
-    return <span className="px-2 py-0.5 bg-red-100 text-red-700 rounded text-xs">Expired</span>;
+    return (
+      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border bg-error-bg text-error border-error-border">
+        Expired
+      </span>
+    );
   }
-  return <span className="px-2 py-0.5 bg-yellow-100 text-yellow-700 rounded text-xs">Pending</span>;
+  return (
+    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border bg-warning-bg text-warning border-warning-border">
+      Pending
+    </span>
+  );
 }
+
+const inputClass = "h-10 px-3 text-sm border border-border rounded-lg bg-surface-card text-body placeholder:text-muted focus:outline-none focus:border-border-focus transition-colors";
 
 export default function InvitationsPage() {
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [loading, setLoading] = useState(true);
-  const [form, setForm] = useState<NewInviteForm>({
-    email: "",
-    tenantName: "",
-    tenantSlug: "",
-    expiresInDays: 7,
-  });
+  const [form, setForm] = useState<NewInviteForm>({ email: "", tenantName: "", tenantSlug: "", expiresInDays: 7 });
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState("");
   const [generatedLink, setGeneratedLink] = useState("");
+  const [copied, setCopied] = useState(false);
 
   const loadInvitations = () => {
     fetch("/api/super-admin/invitations")
       .then((r) => r.json())
-      .then((data) => {
-        setInvitations(data);
-        setLoading(false);
-      })
+      .then((data) => { setInvitations(data); setLoading(false); })
       .catch(() => setLoading(false));
   };
 
-  useEffect(() => {
-    loadInvitations();
-  }, []);
+  useEffect(() => { loadInvitations(); }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -71,10 +94,7 @@ export default function InvitationsPage() {
     const data = await res.json();
 
     if (!res.ok) {
-      const msg =
-        typeof data.error === "string"
-          ? data.error
-          : JSON.stringify(data.error?.fieldErrors ?? data.error);
+      const msg = typeof data.error === "string" ? data.error : JSON.stringify(data.error?.fieldErrors ?? data.error);
       setFormError(msg);
       setSubmitting(false);
       return;
@@ -87,140 +107,166 @@ export default function InvitationsPage() {
   };
 
   const autoSlug = (name: string) =>
-    name
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-|-$/g, "");
+    name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+
+  const copyLink = async () => {
+    await navigator.clipboard.writeText(generatedLink);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   return (
-    <div className="space-y-8">
-      <h1 className="text-2xl font-bold">Admin Invitations</h1>
+    <div className="px-8 py-8 space-y-5">
+      <div className="mb-7">
+        <h1 className="text-[22px] font-semibold text-heading">Admin Invitations</h1>
+        <p className="text-sm text-secondary mt-0.5">Invite review center admins to join the platform.</p>
+      </div>
 
-      {/* Create invitation form */}
-      <div className="bg-white rounded-lg border p-6">
-        <h2 className="text-lg font-semibold mb-4">Invite a New Admin</h2>
-        {formError && (
-          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-4 text-sm">
-            {formError}
-          </div>
-        )}
-        {generatedLink && (
-          <div className="bg-green-50 border border-green-200 rounded p-4 mb-4">
-            <p className="text-sm font-medium text-green-800 mb-2">Invitation created! Share this link:</p>
-            <div className="flex items-center gap-2">
-              <code className="flex-1 bg-white border rounded px-3 py-2 text-sm break-all">
-                {generatedLink}
-              </code>
+      {/* Create invitation card */}
+      <div className="bg-surface-card border border-border rounded-xl shadow-sm">
+        <div className="px-5 py-4 border-b border-border-subtle">
+          <h2 className="text-sm font-semibold text-heading">Invite a new admin</h2>
+          <p className="text-xs text-secondary mt-0.5">
+            Creates a one-time invitation link for an admin to set up their review center.
+          </p>
+        </div>
+        <div className="px-5 py-5">
+          {formError && (
+            <div className="mb-4 px-3.5 py-2.5 rounded-lg text-sm bg-error-bg border border-error-border text-error">
+              {formError}
+            </div>
+          )}
+          {generatedLink && (
+            <div className="mb-5 rounded-lg bg-success-bg border border-success-border p-3.5">
+              <p className="text-xs font-semibold text-success mb-2">Invitation created — share this link:</p>
+              <div className="flex items-center gap-2">
+                <code className="flex-1 block text-xs font-mono bg-surface-card border border-border rounded-lg px-3 py-2 break-all text-body">
+                  {generatedLink}
+                </code>
+                <button
+                  onClick={copyLink}
+                  className="flex items-center gap-1.5 h-9 px-3 rounded-lg text-xs font-medium bg-success text-white hover:opacity-90 transition-opacity whitespace-nowrap"
+                >
+                  <IconCopy />
+                  {copied ? "Copied!" : "Copy"}
+                </button>
+              </div>
+            </div>
+          )}
+          <form onSubmit={handleSubmit} className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-medium text-secondary">Admin email</label>
+              <input
+                type="email"
+                required
+                value={form.email}
+                onChange={(e) => setForm({ ...form, email: e.target.value })}
+                className={inputClass}
+                placeholder="admin@reviewcenter.com"
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-medium text-secondary">Expires in (days)</label>
+              <input
+                type="number"
+                min={1}
+                max={30}
+                value={form.expiresInDays}
+                onChange={(e) => setForm({ ...form, expiresInDays: Number(e.target.value) })}
+                className={inputClass}
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-medium text-secondary">Review center name</label>
+              <input
+                type="text"
+                required
+                value={form.tenantName}
+                onChange={(e) => {
+                  const name = e.target.value;
+                  setForm({ ...form, tenantName: name, tenantSlug: autoSlug(name) });
+                }}
+                className={inputClass}
+                placeholder="Excellence Review Center"
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-medium text-secondary">Slug</label>
+              <input
+                type="text"
+                required
+                pattern="[a-z0-9-]+"
+                value={form.tenantSlug}
+                onChange={(e) => setForm({ ...form, tenantSlug: e.target.value })}
+                className={`${inputClass} font-mono`}
+                placeholder="excellence-review"
+              />
+              <p className="text-xs text-muted">Lowercase, numbers, hyphens only</p>
+            </div>
+            <div className="col-span-2 pt-1">
               <button
-                onClick={() => navigator.clipboard.writeText(generatedLink)}
-                className="px-3 py-2 bg-green-600 text-white rounded text-sm hover:bg-green-700 whitespace-nowrap"
+                type="submit"
+                disabled={submitting}
+                className="inline-flex items-center gap-2 h-9 px-5 rounded-lg text-sm font-medium bg-primary text-inverse hover:bg-primary-hover disabled:opacity-50 transition-colors"
               >
-                Copy
+                {submitting ? <><Spinner /> Creating…</> : "Create invitation"}
               </button>
             </div>
-          </div>
-        )}
-        <form onSubmit={handleSubmit} className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium mb-1">Admin Email</label>
-            <input
-              type="email"
-              required
-              value={form.email}
-              onChange={(e) => setForm({ ...form, email: e.target.value })}
-              className="w-full px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-              placeholder="admin@reviewcenter.com"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">Expires In (days)</label>
-            <input
-              type="number"
-              min={1}
-              max={30}
-              value={form.expiresInDays}
-              onChange={(e) => setForm({ ...form, expiresInDays: Number(e.target.value) })}
-              className="w-full px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">Review Center Name</label>
-            <input
-              type="text"
-              required
-              value={form.tenantName}
-              onChange={(e) => {
-                const name = e.target.value;
-                setForm({ ...form, tenantName: name, tenantSlug: autoSlug(name) });
-              }}
-              className="w-full px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-              placeholder="e.g. Excellence Review Center"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">Slug</label>
-            <input
-              type="text"
-              required
-              pattern="[a-z0-9-]+"
-              value={form.tenantSlug}
-              onChange={(e) => setForm({ ...form, tenantSlug: e.target.value })}
-              className="w-full px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-mono"
-              placeholder="excellence-review"
-            />
-            <p className="text-xs text-gray-400 mt-1">Lowercase, numbers, hyphens only</p>
-          </div>
-          <div className="col-span-2">
-            <button
-              type="submit"
-              disabled={submitting}
-              className="px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 text-sm"
-            >
-              {submitting ? "Creating..." : "Create Invitation"}
-            </button>
-          </div>
-        </form>
+          </form>
+        </div>
       </div>
 
       {/* Invitations list */}
-      <div className="bg-white rounded-lg border overflow-hidden">
-        <div className="px-4 py-3 border-b bg-gray-50">
-          <h2 className="font-semibold">All Admin Invitations</h2>
+      <div className="bg-surface-card border border-border rounded-xl shadow-sm">
+        <div className="px-5 py-4 border-b border-border-subtle">
+          <h2 className="text-sm font-semibold text-heading">
+            All invitations{" "}
+            <span className="text-secondary font-normal">({invitations.length})</span>
+          </h2>
         </div>
         {loading ? (
-          <p className="text-gray-500 p-4">Loading...</p>
+          <div className="flex items-center justify-center h-32">
+            <Spinner />
+          </div>
         ) : invitations.length === 0 ? (
-          <p className="text-gray-500 p-6 text-center">No invitations yet.</p>
+          <div className="px-5 py-10 text-center text-sm text-secondary">No invitations yet.</div>
         ) : (
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b">
-              <tr>
-                <th className="text-left px-4 py-3 font-medium text-gray-600">Email</th>
-                <th className="text-left px-4 py-3 font-medium text-gray-600">Tenant</th>
-                <th className="text-left px-4 py-3 font-medium text-gray-600">Status</th>
-                <th className="text-left px-4 py-3 font-medium text-gray-600">Expires</th>
-                <th className="text-left px-4 py-3 font-medium text-gray-600">Created</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y">
-              {invitations.map((inv) => (
-                <tr key={inv.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-3">{inv.email}</td>
-                  <td className="px-4 py-3">
-                    <div>{inv.tenantName}</div>
-                    <div className="text-gray-400 font-mono text-xs">{inv.tenantSlug}</div>
-                  </td>
-                  <td className="px-4 py-3">{statusBadge(inv)}</td>
-                  <td className="px-4 py-3 text-gray-500">
-                    {new Date(inv.expiresAt).toLocaleDateString()}
-                  </td>
-                  <td className="px-4 py-3 text-gray-500">
-                    {new Date(inv.createdAt).toLocaleDateString()}
-                  </td>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-border-subtle">
+                  <th className="px-5 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wide">Email</th>
+                  <th className="px-5 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wide">Tenant</th>
+                  <th className="px-5 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wide">Status</th>
+                  <th className="px-5 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wide">Expires</th>
+                  <th className="px-5 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wide">Created</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {invitations.map((inv, i) => (
+                  <tr
+                    key={inv.id}
+                    className={`${i > 0 ? "border-t border-border-subtle" : ""} hover:bg-surface-base transition-colors`}
+                  >
+                    <td className="px-5 py-3.5 text-sm text-body">{inv.email}</td>
+                    <td className="px-5 py-3.5 text-sm">
+                      <p className="text-body font-medium">{inv.tenantName}</p>
+                      <p className="text-xs font-mono text-muted mt-0.5">{inv.tenantSlug}</p>
+                    </td>
+                    <td className="px-5 py-3.5">
+                      <StatusBadge inv={inv} />
+                    </td>
+                    <td className="px-5 py-3.5 text-sm text-secondary">
+                      {new Date(inv.expiresAt).toLocaleDateString()}
+                    </td>
+                    <td className="px-5 py-3.5 text-sm text-secondary">
+                      {new Date(inv.createdAt).toLocaleDateString()}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
     </div>
