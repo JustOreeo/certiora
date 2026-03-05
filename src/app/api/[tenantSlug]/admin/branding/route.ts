@@ -42,10 +42,7 @@ export async function PATCH(
   const body = await request.json();
   const parsed = updateSchema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json(
-      { error: "Validation failed", details: parsed.error.flatten() },
-      { status: 400 }
-    );
+    return NextResponse.json({ error: "Validation failed" }, { status: 400 });
   }
 
   const updated = await prisma.tenant.update({

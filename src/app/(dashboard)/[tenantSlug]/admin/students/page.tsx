@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
+import { toUserMessage } from "@/lib/errors";
 
 type Student = {
   id: string;
@@ -66,6 +67,7 @@ export default function StudentsPage() {
   const [inviteLink, setInviteLink] = useState("");
   const [inviteError, setInviteError] = useState("");
   const [copied, setCopied] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -105,11 +107,11 @@ export default function StudentsPage() {
         setCredentials(data.students || []);
         loadStudents();
       } else {
-        alert("Upload failed: " + (data.error || "Unknown error"));
+        alert(toUserMessage(data, "Upload failed. Please check the file and try again."));
       }
     } catch (error) {
       console.error("Upload error:", error);
-      alert("Upload failed");
+      alert(toUserMessage(error, "Upload failed. Please try again."));
     } finally {
       setUploading(false);
       e.target.value = "";
@@ -131,7 +133,7 @@ export default function StudentsPage() {
     const data = await res.json();
 
     if (!res.ok) {
-      setInviteError(typeof data.error === "string" ? data.error : "Failed to create invitation");
+      setInviteError(toUserMessage(data, "Failed to create invitation."));
       setInviting(false);
       return;
     }
@@ -187,6 +189,7 @@ export default function StudentsPage() {
           {uploading ? <Spinner /> : <IconUpload />}
           {uploading ? "Uploading…" : "Upload CSV"}
           <input
+            ref={fileInputRef}
             type="file"
             accept=".csv"
             onChange={handleFileUpload}
@@ -197,7 +200,7 @@ export default function StudentsPage() {
       </div>
 
       {/* Invite student card */}
-      <div className="bg-surface-card border border-border rounded-xl shadow-sm mb-5">
+      <div id="invite-student" className="bg-surface-card border border-border rounded-xl shadow-sm mb-5">
         <div className="px-5 py-4 border-b border-border-subtle">
           <h2 className="text-sm font-semibold text-heading">Invite a student</h2>
           <p className="text-xs text-secondary mt-0.5">
@@ -308,8 +311,27 @@ export default function StudentsPage() {
           </h2>
         </div>
         {students.length === 0 ? (
-          <div className="px-5 py-12 text-center text-sm text-secondary">
-            No students yet. Invite one above or upload a CSV.
+          <div className="px-5 py-12 text-center">
+            <p className="text-sm text-secondary mb-4">
+              No students yet. Invite a student by email or upload a CSV to add many at once.
+            </p>
+            <div className="flex flex-wrap items-center justify-center gap-3">
+              <a
+                href="#invite-student"
+                className="inline-flex h-10 items-center px-5 rounded-lg text-sm font-semibold bg-primary text-inverse hover:bg-primary-hover transition-colors"
+              >
+                Invite student
+              </a>
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+                className="inline-flex items-center gap-2 h-10 px-5 rounded-lg text-sm font-semibold bg-surface-base border border-border text-body hover:border-border-strong transition-colors disabled:opacity-60"
+              >
+                {uploading ? <Spinner /> : <IconUpload />}
+                Upload CSV
+              </button>
+            </div>
           </div>
         ) : (
           <div className="overflow-x-auto">

@@ -164,9 +164,15 @@ export default function AdminStudentAnalyticsPage() {
 
       {isEmpty && (
         <div className="bg-surface-card border border-border rounded-xl px-6 py-12 text-center shadow-sm">
-          <p className="text-sm text-secondary">
+          <p className="text-sm text-secondary mb-4">
             This student has not taken any exams yet.
           </p>
+          <Link
+            href={`/${tenantSlug}/admin/students`}
+            className="inline-flex h-10 items-center px-5 rounded-lg text-sm font-semibold bg-primary text-inverse hover:bg-primary-hover transition-colors"
+          >
+            View students
+          </Link>
         </div>
       )}
 

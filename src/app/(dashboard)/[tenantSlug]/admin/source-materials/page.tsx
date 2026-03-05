@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
+import { toUserMessage } from "@/lib/errors";
 
 type SourceMaterial = {
   id: string;
@@ -153,7 +154,7 @@ export default function SourceMaterialsPage() {
 
       if (!urlRes.ok) {
         const err = await urlRes.json();
-        throw new Error(err.error || "Failed to get upload URL");
+        throw new Error(toUserMessage(err, "Failed to get upload URL"));
       }
 
       const { uploadUrl, sourceMaterialId } = await urlRes.json();
@@ -166,7 +167,7 @@ export default function SourceMaterialsPage() {
         body: file,
       });
 
-      if (!uploadRes.ok) throw new Error("Upload to storage failed");
+      if (!uploadRes.ok) throw new Error("Upload to storage failed. Please try again.");
       setUploadProgress(100);
 
       // Step 3: confirm and enqueue ingestion
@@ -179,14 +180,14 @@ export default function SourceMaterialsPage() {
 
       if (!confirmRes.ok) {
         const err = await confirmRes.json();
-        throw new Error(err.error || "Failed to start processing");
+        throw new Error(toUserMessage(err, "Failed to start processing"));
       }
 
       setUploadState("done");
       await loadMaterials();
       setTimeout(() => setUploadState("idle"), 2000);
     } catch (err) {
-      setUploadError(err instanceof Error ? err.message : "Upload failed");
+      setUploadError(toUserMessage(err, "Upload failed. Please try again."));
       setUploadState("error");
     } finally {
       // Reset file input so the same file can be re-selected
@@ -200,7 +201,7 @@ export default function SourceMaterialsPage() {
       const res = await fetch(`/api/admin/source-materials/${id}`, { method: "DELETE" });
       if (!res.ok) {
         const err = await res.json();
-        alert(err.error || "Delete failed");
+        alert(toUserMessage(err, "Delete failed. Please try again."));
         return;
       }
       setMaterials((prev) => prev.filter((m) => m.id !== id));
@@ -274,9 +275,18 @@ export default function SourceMaterialsPage() {
             <IconFilePdf />
           </div>
           <p className="text-sm font-medium text-body mb-1">No source materials yet</p>
-          <p className="text-xs text-secondary">
+          <p className="text-xs text-secondary mb-4">
             Upload a PDF to make reference content available while writing questions.
           </p>
+          <button
+            type="button"
+            onClick={() => !isUploading && fileInputRef.current?.click()}
+            disabled={isUploading}
+            className="inline-flex items-center gap-2 h-10 px-5 rounded-lg text-sm font-semibold bg-primary text-inverse hover:bg-primary-hover transition-colors disabled:opacity-60"
+          >
+            {isUploading ? <Spinner size={14} /> : <IconUpload />}
+            Upload PDF
+          </button>
         </div>
       ) : (
         <div className="bg-surface-card border border-border rounded-xl shadow-sm overflow-hidden">
@@ -298,9 +308,9 @@ export default function SourceMaterialsPage() {
                       <span className="text-muted shrink-0"><IconFilePdf /></span>
                       <span className="font-medium text-body truncate max-w-xs">{m.fileName}</span>
                     </div>
-                    {m.status === "FAILED" && m.ingestionError && (
-                      <p className="text-xs text-error mt-1 ml-6 truncate max-w-xs" title={m.ingestionError}>
-                        {m.ingestionError}
+                    {m.status === "FAILED" && (
+                      <p className="text-xs text-error mt-1 ml-6 max-w-xs">
+                        Processing failed. You can delete and re-upload this file.
                       </p>
                     )}
                   </td>

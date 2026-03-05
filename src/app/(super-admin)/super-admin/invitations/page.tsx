@@ -123,7 +123,7 @@ export default function InvitationsPage() {
       </div>
 
       {/* Create invitation card */}
-      <div className="bg-surface-card border border-border rounded-xl shadow-sm">
+      <div id="create-invitation" className="bg-surface-card border border-border rounded-xl shadow-sm">
         <div className="px-5 py-4 border-b border-border-subtle">
           <h2 className="text-sm font-semibold text-heading">Invite a new admin</h2>
           <p className="text-xs text-secondary mt-0.5">
@@ -229,7 +229,15 @@ export default function InvitationsPage() {
             <Spinner />
           </div>
         ) : invitations.length === 0 ? (
-          <div className="px-5 py-10 text-center text-sm text-secondary">No invitations yet.</div>
+          <div className="px-5 py-12 text-center">
+            <p className="text-sm text-secondary mb-4">No invitations yet.</p>
+            <a
+              href="#create-invitation"
+              className="inline-flex h-10 items-center px-5 rounded-lg text-sm font-semibold bg-primary text-inverse hover:bg-primary-hover transition-colors"
+            >
+              Create invitation
+            </a>
+          </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full">

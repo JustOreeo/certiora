@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useTenantBranding } from "@/contexts/TenantBrandingContext";
+import { toUserMessage } from "@/lib/errors";
 
 const HEX_REGEX = /^#[0-9A-Fa-f]{6}$/;
 
@@ -40,7 +41,7 @@ export default function AdminBrandingPage() {
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error ?? "Failed to save branding.");
+        setError(toUserMessage(data, "Failed to save branding."));
         return;
       }
       setSuccess(true);

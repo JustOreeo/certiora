@@ -102,17 +102,17 @@ export default function ReviewPage() {
   return (
     <div className="min-h-screen bg-surface-base">
       {/* Header */}
-      <header className="h-[56px] bg-surface-card border-b border-border px-6 flex items-center justify-between">
+      <header className="min-h-[56px] bg-surface-card border-b border-border px-4 sm:px-6 flex items-center justify-between gap-2">
         <span className="text-sm font-semibold text-heading">Exam Review</span>
         <Link
           href={`/${tenantSlug}/exams`}
-          className="text-sm font-medium text-link hover:text-link transition-colors"
+          className="min-h-[44px] flex items-center py-2 px-2 -my-1 text-sm font-medium text-link hover:text-link transition-colors rounded-lg hover:bg-surface-hover"
         >
           ← Back to exams
         </Link>
       </header>
 
-      <div className="px-8 py-8">
+      <div className="px-4 sm:px-6 md:px-8 py-6 sm:py-8">
         {/* Score card */}
         <div className="bg-surface-card border border-border rounded-xl shadow-sm px-6 py-6 mb-6">
           <div className="flex items-start justify-between">

@@ -161,7 +161,7 @@ export default function QuestionsPage() {
   return (
     <div className="px-8 py-8">
       {/* Page header */}
-      <div className="flex items-center justify-between mb-7">
+      <div id="create-question" className="flex items-center justify-between mb-7">
         <div>
           <h1 className="text-[22px] font-semibold text-heading">Question Bank</h1>
           <p className="text-sm text-secondary mt-0.5">{questions.length} questions</p>
@@ -354,10 +354,18 @@ export default function QuestionsPage() {
       </div>
 
       {/* Question list */}
-      <div className="space-y-2">
+      <div className="space-y-2" id="question-list">
         {questions.length === 0 ? (
-          <div className="bg-surface-card border border-border rounded-xl px-5 py-12 text-center text-sm text-secondary shadow-sm">
-            No questions yet. Create one above.
+          <div className="bg-surface-card border border-border rounded-xl px-5 py-12 text-center shadow-sm">
+            <p className="text-sm text-secondary mb-4">
+              No questions yet. Add your first question to build the question bank.
+            </p>
+            <a
+              href="#create-question"
+              className="inline-flex h-10 items-center px-5 rounded-lg text-sm font-semibold bg-primary text-inverse hover:bg-primary-hover transition-colors"
+            >
+              Go to question bank
+            </a>
           </div>
         ) : (
           questions.map((q) => (

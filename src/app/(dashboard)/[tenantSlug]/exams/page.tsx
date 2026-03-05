@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter, useParams } from "next/navigation";
+import { toUserMessage } from "@/lib/errors";
 
 type Attempt = {
   id: string;
@@ -91,12 +92,12 @@ export default function ExamsPage() {
       if (res.ok && data.id) {
         router.push(`/${tenantSlug}/exams/${data.id}`);
       } else {
-        alert(data.error || "Failed to start exam");
+        alert(toUserMessage(data, "Failed to start exam. Please try again."));
         setStarting(null);
       }
     } catch (error) {
       console.error("Start exam error:", error);
-      alert("Failed to start exam");
+      alert(toUserMessage(error, "Failed to start exam. Please try again."));
       setStarting(null);
     }
   };
@@ -106,7 +107,7 @@ export default function ExamsPage() {
 
   return (
     <div>
-      <div className="px-8 py-8">
+      <div className="px-4 sm:px-6 md:px-8 py-6 sm:py-8">
         {/* Page header */}
         <div className="mb-7">
           <h1 className="text-[22px] font-semibold text-heading">My Exams</h1>
@@ -122,7 +123,7 @@ export default function ExamsPage() {
               key={examType}
               onClick={() => startExam(examType)}
               disabled={starting !== null}
-              className="bg-surface-card border border-border rounded-xl px-5 py-4 shadow-sm hover:border-primary hover:bg-primary-subtle/30 transition-colors text-left disabled:opacity-60"
+              className="min-h-[44px] bg-surface-card border border-border rounded-xl px-5 py-4 shadow-sm hover:border-primary hover:bg-primary-subtle/30 transition-colors text-left disabled:opacity-60"
             >
               <p className="text-sm font-semibold text-heading">{label}</p>
               <p className="text-xs text-secondary mt-1">{range}</p>
@@ -142,7 +143,17 @@ export default function ExamsPage() {
           </div>
         ) : attempts.length === 0 ? (
           <div className="bg-surface-card border border-border rounded-xl px-5 py-12 text-center shadow-sm">
-            <p className="text-sm text-secondary">No attempts yet. Start an exam above!</p>
+            <p className="text-sm text-secondary mb-4">
+              No attempts yet. Start a short quiz to see your first results here.
+            </p>
+            <button
+              type="button"
+              onClick={() => startExam("SHORT_QUIZ")}
+              disabled={starting !== null}
+              className="inline-flex h-10 items-center px-5 rounded-lg text-sm font-semibold bg-primary text-inverse hover:bg-primary-hover transition-colors disabled:opacity-60"
+            >
+              {starting === "SHORT_QUIZ" ? <>Starting…</> : "Start short quiz"}
+            </button>
           </div>
         ) : (
           <div className="space-y-2">
