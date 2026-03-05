@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter, useParams } from "next/navigation";
+import Link from "next/link";
 
 type Student = {
   id: string;
@@ -319,6 +320,7 @@ export default function StudentsPage() {
                   <th className="px-5 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wide">Email</th>
                   <th className="px-5 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wide">Expires</th>
                   <th className="px-5 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wide">Enrolled</th>
+                  <th className="px-5 py-3 text-right text-xs font-medium text-secondary uppercase tracking-wide">Performance</th>
                 </tr>
               </thead>
               <tbody>
@@ -336,6 +338,14 @@ export default function StudentsPage() {
                     </td>
                     <td className="px-5 py-3.5 text-sm text-secondary">
                       {new Date(s.createdAt).toLocaleDateString()}
+                    </td>
+                    <td className="px-5 py-3.5 text-right">
+                      <Link
+                        href={`/${params.tenantSlug}/admin/analytics/students/${s.id}`}
+                        className="text-sm font-medium text-primary hover:underline"
+                      >
+                        View performance
+                      </Link>
                     </td>
                   </tr>
                 ))}

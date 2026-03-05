@@ -58,6 +58,16 @@ function IconBookOpen() {
   );
 }
 
+function IconBarChart() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="12" y1="20" x2="12" y2="10" />
+      <line x1="18" y1="20" x2="18" y2="4" />
+      <line x1="6" y1="20" x2="6" y2="16" />
+    </svg>
+  );
+}
+
 function IconLogOut() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
@@ -109,6 +119,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     { href: `/${tenantSlug}/admin/taxonomy`, label: "Taxonomy", icon: <IconTag /> },
     { href: `/${tenantSlug}/admin/questions`, label: "Questions", icon: <IconFileText /> },
     { href: `/${tenantSlug}/admin/students`, label: "Students", icon: <IconUsers /> },
+    { href: `/${tenantSlug}/admin/analytics`, label: "Analytics", icon: <IconBarChart /> },
     { href: `/${tenantSlug}/admin/source-materials`, label: "Source Materials", icon: <IconBookOpen /> },
   ];
 
