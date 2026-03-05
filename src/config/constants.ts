@@ -8,6 +8,15 @@ export const EXAM_TYPE_QUESTION_COUNTS = {
 } as const;
 
 /**
+ * Optional time limit in minutes per exam type. null = no limit.
+ */
+export const EXAM_TYPE_TIME_LIMIT_MINUTES = {
+  SHORT_QUIZ: null as number | null,
+  QUICK_EXAM: 60,
+  MOCK_EXAM: 120,
+} as const;
+
+/**
  * SM-2 algorithm defaults for SRS.
  */
 export const SRS_DEFAULTS = {

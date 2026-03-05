@@ -27,8 +27,21 @@ type Attempt = {
   score: number;
   status: string;
   submittedAt: string;
+  timeSpentSeconds: number | null;
   answers: Answer[];
 };
+
+function formatTimeSpent(seconds: number | null | undefined): string {
+  if (seconds == null || seconds < 0) return "—";
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  if (m >= 60) {
+    const h = Math.floor(m / 60);
+    const min = m % 60;
+    return min > 0 ? `${h}h ${min}m` : `${h}h`;
+  }
+  return s > 0 ? `${m}m ${s}s` : `${m}m`;
+}
 
 function Spinner() {
   return (
@@ -110,6 +123,11 @@ export default function ReviewPage() {
               <p className="text-sm text-secondary">
                 Submitted {new Date(attempt.submittedAt).toLocaleString()}
               </p>
+              {attempt.timeSpentSeconds != null && (
+                <p className="text-sm text-secondary mt-0.5">
+                  Completed in {formatTimeSpent(attempt.timeSpentSeconds)}
+                </p>
+              )}
             </div>
             <div className="text-right">
               <p className={`text-4xl font-bold ${passed ? "text-success" : "text-error"}`}>

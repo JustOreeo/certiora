@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter, useParams } from "next/navigation";
 
@@ -22,8 +22,16 @@ type Attempt = {
   examType: string;
   questionCount: number;
   status: string;
+  startedAt?: string;
+  timeLimitMinutes?: number | null;
   answers: Answer[];
 };
+
+function formatCountdown(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}:${s.toString().padStart(2, "0")}`;
+}
 
 function Spinner() {
   return (
@@ -46,6 +54,9 @@ export default function TakeExamPage() {
   const [selectedOption, setSelectedOption] = useState("");
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [timeExpired, setTimeExpired] = useState(false);
+  const questionStartedAtRef = useRef<number>(Date.now());
+  const [countdownSeconds, setCountdownSeconds] = useState<number | null>(null);
 
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -54,6 +65,31 @@ export default function TakeExamPage() {
       loadAttempt();
     }
   }, [status, router, attemptId]);
+
+  // Reset per-question timer when changing question
+  useEffect(() => {
+    questionStartedAtRef.current = Date.now();
+  }, [currentIndex]);
+
+  // Countdown timer when time limit is set
+  useEffect(() => {
+    if (!attempt || attempt.status !== "IN_PROGRESS" || attempt.timeLimitMinutes == null || !attempt.startedAt) {
+      return;
+    }
+    const limitSeconds = attempt.timeLimitMinutes * 60;
+    const startedAtMs = new Date(attempt.startedAt).getTime();
+    const tick = () => {
+      const elapsed = Math.floor((Date.now() - startedAtMs) / 1000);
+      const remaining = Math.max(0, limitSeconds - elapsed);
+      setCountdownSeconds(remaining);
+      if (remaining <= 0) {
+        setTimeExpired(true);
+      }
+    };
+    tick();
+    const interval = setInterval(tick, 1000);
+    return () => clearInterval(interval);
+  }, [attempt?.id, attempt?.startedAt, attempt?.timeLimitMinutes, attempt?.status]);
 
   const loadAttempt = async () => {
     try {
@@ -75,11 +111,28 @@ export default function TakeExamPage() {
     }
   };
 
+  const patchCurrentAnswerWithTime = async (): Promise<void> => {
+    if (!attempt || !selectedOption) return;
+    const currentAnswer = attempt.answers[currentIndex];
+    const timeSpentSeconds = Math.round((Date.now() - questionStartedAtRef.current) / 1000);
+    await fetch(`/api/exams/attempts/${attemptId}/answers`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        questionId: currentAnswer.questionId,
+        selectedOptionId: selectedOption,
+        order: currentAnswer.order,
+        timeSpentSeconds,
+      }),
+    });
+  };
+
   const submitAnswer = async () => {
     if (!attempt || !selectedOption) return;
     const currentAnswer = attempt.answers[currentIndex];
 
     try {
+      const timeSpentSeconds = Math.round((Date.now() - questionStartedAtRef.current) / 1000);
       await fetch(`/api/exams/attempts/${attemptId}/answers`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -87,6 +140,7 @@ export default function TakeExamPage() {
           questionId: currentAnswer.questionId,
           selectedOptionId: selectedOption,
           order: currentAnswer.order,
+          timeSpentSeconds,
         }),
       });
 
@@ -101,9 +155,11 @@ export default function TakeExamPage() {
   };
 
   const submitExam = async () => {
-    if (!confirm("Submit exam? You won't be able to change your answers.")) return;
+    if (!attempt) return;
+    if (!timeExpired && !confirm("Submit exam? You won't be able to change your answers.")) return;
     setSubmitting(true);
     try {
+      await patchCurrentAnswerWithTime();
       const res = await fetch(`/api/exams/attempts/${attemptId}/submit`, { method: "POST" });
       if (res.ok) {
         router.push(`/${tenantSlug}/exams/${attemptId}/review`);
@@ -118,6 +174,23 @@ export default function TakeExamPage() {
       setSubmitting(false);
     }
   };
+
+  // Auto-submit when time expires
+  const autoSubmitTriggeredRef = useRef(false);
+  useEffect(() => {
+    if (!timeExpired || !attempt || autoSubmitTriggeredRef.current) return;
+    autoSubmitTriggeredRef.current = true;
+    (async () => {
+      await patchCurrentAnswerWithTime();
+      const res = await fetch(`/api/exams/attempts/${attemptId}/submit`, { method: "POST" });
+      if (res.ok) {
+        router.push(`/${tenantSlug}/exams/${attemptId}/review`);
+      } else {
+        const data = await res.json();
+        alert(data.error || "Time's up. Submit failed.");
+      }
+    })();
+  }, [timeExpired, attempt, attemptId]);
 
   if (loading || !attempt) {
     return (
@@ -135,20 +208,27 @@ export default function TakeExamPage() {
   return (
     <div className="min-h-screen bg-surface-base">
       {/* Minimal header */}
-      <header className="h-[56px] bg-surface-card border-b border-border px-6 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <span className="text-sm font-semibold text-heading">{attempt.examType.replace("_", " ")}</span>
-          <span className="text-muted text-sm">·</span>
-          <span className="text-sm text-secondary">
+      <header className="h-[56px] bg-surface-card border-b border-border px-6 flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3 min-w-0">
+          <span className="text-sm font-semibold text-heading shrink-0">{attempt.examType.replace("_", " ")}</span>
+          <span className="text-muted text-sm shrink-0">·</span>
+          <span className="text-sm text-secondary shrink-0">
             Question {currentIndex + 1} of {attempt.questionCount}
           </span>
         </div>
-        {/* Progress bar */}
-        <div className="w-40 h-1.5 bg-border rounded-full overflow-hidden">
-          <div
-            className="h-full bg-primary rounded-full transition-all duration-300"
-            style={{ width: `${progress}%` }}
-          />
+        <div className="flex items-center gap-3 shrink-0">
+          {countdownSeconds !== null && (
+            <span className={`text-sm font-medium tabular-nums ${countdownSeconds <= 0 ? "text-error" : "text-secondary"}`}>
+              {timeExpired ? "Time's up" : formatCountdown(countdownSeconds)}
+            </span>
+          )}
+          {/* Progress bar */}
+          <div className="w-40 h-1.5 bg-border rounded-full overflow-hidden">
+            <div
+              className="h-full bg-primary rounded-full transition-all duration-300"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
         </div>
       </header>
 
@@ -203,7 +283,7 @@ export default function TakeExamPage() {
                 setSelectedOption(prev.selectedOptionId || "");
               }
             }}
-            disabled={currentIndex === 0}
+            disabled={currentIndex === 0 || timeExpired}
             className="h-9 px-4 rounded-lg text-sm font-medium border border-border text-secondary hover:border-border-strong hover:text-body disabled:opacity-40 transition-colors"
           >
             Previous
@@ -212,7 +292,7 @@ export default function TakeExamPage() {
           {isLastQuestion ? (
             <button
               onClick={submitExam}
-              disabled={submitting || !selectedOption}
+              disabled={submitting || !selectedOption || timeExpired}
               className="inline-flex items-center gap-2 h-9 px-5 rounded-lg text-sm font-medium bg-success text-white hover:opacity-90 disabled:opacity-50 transition-opacity"
             >
               {submitting ? <><Spinner /> Submitting…</> : "Submit exam"}
@@ -220,7 +300,7 @@ export default function TakeExamPage() {
           ) : (
             <button
               onClick={submitAnswer}
-              disabled={!selectedOption}
+              disabled={!selectedOption || timeExpired}
               className="h-9 px-5 rounded-lg text-sm font-medium bg-primary text-inverse hover:bg-primary-hover disabled:opacity-50 transition-colors"
             >
               Next
