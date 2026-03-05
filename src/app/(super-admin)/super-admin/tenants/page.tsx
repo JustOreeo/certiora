@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 
 type TenantAdmin = { id: string; email: string; name: string | null };
 type Tenant = {
@@ -11,6 +12,15 @@ type Tenant = {
   users: TenantAdmin[];
 };
 
+function Spinner() {
+  return (
+    <svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none">
+      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeOpacity="0.25" />
+      <path d="M4 12a8 8 0 018-8" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 export default function TenantsPage() {
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [loading, setLoading] = useState(true);
@@ -18,66 +28,73 @@ export default function TenantsPage() {
   useEffect(() => {
     fetch("/api/super-admin/tenants")
       .then((r) => r.json())
-      .then((data) => {
-        setTenants(data);
-        setLoading(false);
-      })
+      .then((data) => { setTenants(data); setLoading(false); })
       .catch(() => setLoading(false));
   }, []);
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">Tenants</h1>
-        <a
+    <div className="px-8 py-8">
+      <div className="flex items-center justify-between mb-7">
+        <div>
+          <h1 className="text-[22px] font-semibold text-heading">Tenants</h1>
+          <p className="text-sm text-secondary mt-0.5">All review centers on the platform</p>
+        </div>
+        <Link
           href="/super-admin/invitations"
-          className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm"
+          className="h-9 px-4 inline-flex items-center rounded-lg text-sm font-medium bg-primary text-inverse hover:bg-primary-hover transition-colors"
         >
-          + Invite New Admin
-        </a>
+          + Invite admin
+        </Link>
       </div>
 
-      {loading ? (
-        <p className="text-gray-500">Loading...</p>
-      ) : tenants.length === 0 ? (
-        <div className="bg-white rounded-lg border p-8 text-center text-gray-500">
-          No tenants yet. Invite an admin to create the first tenant.
-        </div>
-      ) : (
-        <div className="bg-white rounded-lg border overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b">
-              <tr>
-                <th className="text-left px-4 py-3 font-medium text-gray-600">Name</th>
-                <th className="text-left px-4 py-3 font-medium text-gray-600">Slug</th>
-                <th className="text-left px-4 py-3 font-medium text-gray-600">Admin</th>
-                <th className="text-left px-4 py-3 font-medium text-gray-600">Created</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y">
-              {tenants.map((tenant) => (
-                <tr key={tenant.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-3 font-medium">{tenant.name}</td>
-                  <td className="px-4 py-3 text-gray-500 font-mono">{tenant.slug}</td>
-                  <td className="px-4 py-3">
-                    {tenant.users[0] ? (
-                      <div>
-                        <div>{tenant.users[0].name}</div>
-                        <div className="text-gray-400 text-xs">{tenant.users[0].email}</div>
-                      </div>
-                    ) : (
-                      <span className="text-gray-400 italic">No admin yet</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-gray-500">
-                    {new Date(tenant.createdAt).toLocaleDateString()}
-                  </td>
+      <div className="bg-surface-card border border-border rounded-xl shadow-sm">
+        {loading ? (
+          <div className="flex items-center justify-center h-32">
+            <Spinner />
+          </div>
+        ) : tenants.length === 0 ? (
+          <div className="px-5 py-12 text-center text-sm text-secondary">
+            No tenants yet. Invite an admin to create the first one.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-border-subtle">
+                  <th className="px-5 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wide">Name</th>
+                  <th className="px-5 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wide">Slug</th>
+                  <th className="px-5 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wide">Admin</th>
+                  <th className="px-5 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wide">Created</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+              </thead>
+              <tbody>
+                {tenants.map((tenant, i) => (
+                  <tr
+                    key={tenant.id}
+                    className={`${i > 0 ? "border-t border-border-subtle" : ""} hover:bg-surface-base transition-colors`}
+                  >
+                    <td className="px-5 py-3.5 text-sm font-medium text-body">{tenant.name}</td>
+                    <td className="px-5 py-3.5 text-sm font-mono text-secondary">{tenant.slug}</td>
+                    <td className="px-5 py-3.5 text-sm">
+                      {tenant.users[0] ? (
+                        <div>
+                          <p className="text-body font-medium">{tenant.users[0].name}</p>
+                          <p className="text-xs text-muted mt-0.5">{tenant.users[0].email}</p>
+                        </div>
+                      ) : (
+                        <span className="text-muted italic text-xs">No admin yet</span>
+                      )}
+                    </td>
+                    <td className="px-5 py-3.5 text-sm text-secondary">
+                      {new Date(tenant.createdAt).toLocaleDateString()}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

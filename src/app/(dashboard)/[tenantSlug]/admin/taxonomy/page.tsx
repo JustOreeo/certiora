@@ -8,6 +8,49 @@ type Subject = { id: string; name: string; order: number };
 type Topic = { id: string; name: string; subjectId: string; order: number };
 type Subtopic = { id: string; name: string; topicId: string; order: number };
 
+function Spinner() {
+  return (
+    <svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none">
+      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeOpacity="0.25" />
+      <path d="M4 12a8 8 0 018-8" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+type SectionProps = {
+  title: string;
+  count: number;
+  onAdd: () => void;
+  adding: boolean;
+  addContent: React.ReactNode;
+  children: React.ReactNode;
+};
+
+function Section({ title, count, onAdd, adding, addContent, children }: SectionProps) {
+  return (
+    <div className="bg-surface-card border border-border rounded-xl shadow-sm">
+      <div className="px-5 py-4 border-b border-border-subtle flex items-center justify-between">
+        <h2 className="text-sm font-semibold text-heading">
+          {title}{" "}
+          <span className="text-secondary font-normal">({count})</span>
+        </h2>
+        <button
+          onClick={onAdd}
+          className="inline-flex items-center h-8 px-3 rounded-lg text-xs font-medium bg-primary text-inverse hover:bg-primary-hover transition-colors"
+        >
+          + Add
+        </button>
+      </div>
+      {adding && (
+        <div className="px-5 py-4 border-b border-border-subtle bg-surface-base">
+          {addContent}
+        </div>
+      )}
+      {children}
+    </div>
+  );
+}
+
 export default function TaxonomyPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
@@ -21,7 +64,7 @@ export default function TaxonomyPage() {
 
   useEffect(() => {
     if (status === "unauthenticated") {
-      router.push("/admin/login");
+      router.push("/login");
     } else if (status === "authenticated") {
       loadTaxonomy();
     }
@@ -86,13 +129,8 @@ export default function TaxonomyPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name }),
     });
-    if (res.ok) {
-      setEditing(null);
-      loadTaxonomy();
-    } else {
-      const data = await res.json();
-      alert(data.error || "Failed to update");
-    }
+    if (res.ok) { setEditing(null); loadTaxonomy(); }
+    else { const d = await res.json(); alert(d.error || "Failed to update"); }
   };
 
   const updateTopic = async (id: string, name: string) => {
@@ -101,13 +139,8 @@ export default function TaxonomyPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name }),
     });
-    if (res.ok) {
-      setEditing(null);
-      loadTaxonomy();
-    } else {
-      const data = await res.json();
-      alert(data.error || "Failed to update");
-    }
+    if (res.ok) { setEditing(null); loadTaxonomy(); }
+    else { const d = await res.json(); alert(d.error || "Failed to update"); }
   };
 
   const updateSubtopic = async (id: string, name: string) => {
@@ -116,264 +149,245 @@ export default function TaxonomyPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name }),
     });
-    if (res.ok) {
-      setEditing(null);
-      loadTaxonomy();
-    } else {
-      const data = await res.json();
-      alert(data.error || "Failed to update");
-    }
+    if (res.ok) { setEditing(null); loadTaxonomy(); }
+    else { const d = await res.json(); alert(d.error || "Failed to update"); }
   };
 
   const deleteSubject = async (id: string) => {
     if (!confirm("Delete this subject? This will fail if it has questions.")) return;
     const res = await fetch(`/api/admin/subjects/${id}`, { method: "DELETE" });
-    if (res.ok) {
-      loadTaxonomy();
-    } else {
-      const data = await res.json();
-      alert(data.error || "Failed to delete");
-    }
+    if (res.ok) loadTaxonomy();
+    else { const d = await res.json(); alert(d.error || "Failed to delete"); }
   };
 
   const deleteTopic = async (id: string) => {
     if (!confirm("Delete this topic? This will fail if it has questions.")) return;
     const res = await fetch(`/api/admin/topics/${id}`, { method: "DELETE" });
-    if (res.ok) {
-      loadTaxonomy();
-    } else {
-      const data = await res.json();
-      alert(data.error || "Failed to delete");
-    }
+    if (res.ok) loadTaxonomy();
+    else { const d = await res.json(); alert(d.error || "Failed to delete"); }
   };
 
   const deleteSubtopic = async (id: string) => {
     if (!confirm("Delete this subtopic? This will fail if it has questions.")) return;
     const res = await fetch(`/api/admin/subtopics/${id}`, { method: "DELETE" });
-    if (res.ok) {
-      loadTaxonomy();
-    } else {
-      const data = await res.json();
-      alert(data.error || "Failed to delete");
-    }
+    if (res.ok) loadTaxonomy();
+    else { const d = await res.json(); alert(d.error || "Failed to delete"); }
   };
 
+  const inputClass = "h-9 px-3 text-sm border border-border rounded-lg bg-surface-card text-body placeholder:text-muted focus:outline-none focus:border-border-focus transition-colors";
+  const btnSave = "h-8 px-3 rounded-lg text-xs font-medium bg-primary text-inverse hover:bg-primary-hover transition-colors";
+  const btnCancel = "h-8 px-3 rounded-lg text-xs font-medium bg-surface-base border border-border text-secondary hover:border-border-strong transition-colors";
+
   if (loading) {
-    return <div className="p-8">Loading...</div>;
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Spinner />
+      </div>
+    );
   }
 
   return (
-    <div className="p-8 max-w-6xl mx-auto">
-      <h1 className="text-3xl font-bold mb-6">Manage Taxonomy</h1>
+    <div className="px-8 py-8 space-y-5">
+      <div className="mb-7">
+        <h1 className="text-[22px] font-semibold text-heading">Taxonomy</h1>
+        <p className="text-sm text-secondary mt-0.5">Manage subjects, topics, and subtopics for your question bank.</p>
+      </div>
 
       {/* Subjects */}
-      <div className="mb-8">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-semibold">Subjects</h2>
-          <button
-            onClick={() => setCreating("subject")}
-            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-          >
-            + Add Subject
-          </button>
-        </div>
-        {creating === "subject" && (
-          <div className="mb-4 p-4 border rounded bg-gray-50">
+      <Section
+        title="Subjects"
+        count={subjects.length}
+        onAdd={() => { setCreating(creating === "subject" ? null : "subject"); setNewItem({ name: "", subjectId: "", topicId: "" }); }}
+        adding={creating === "subject"}
+        addContent={
+          <div className="flex gap-2">
             <input
               type="text"
               placeholder="Subject name"
               value={newItem.name}
               onChange={(e) => setNewItem({ ...newItem, name: e.target.value })}
-              className="w-full px-3 py-2 border rounded mb-2"
+              className={`flex-1 ${inputClass}`}
+              autoFocus
+              onKeyDown={(e) => e.key === "Enter" && createSubject()}
             />
-            <div className="flex gap-2">
-              <button onClick={createSubject} className="px-4 py-2 bg-green-600 text-white rounded">
-                Save
-              </button>
-              <button onClick={() => setCreating(null)} className="px-4 py-2 bg-gray-400 text-white rounded">
-                Cancel
-              </button>
-            </div>
+            <button onClick={createSubject} className={btnSave}>Save</button>
+            <button onClick={() => setCreating(null)} className={btnCancel}>Cancel</button>
           </div>
+        }
+      >
+        {subjects.length === 0 ? (
+          <p className="px-5 py-6 text-sm text-secondary text-center">No subjects yet.</p>
+        ) : (
+          <ul>
+            {subjects.map((s, i) => (
+              <li key={s.id} className={`px-5 py-3 flex items-center gap-3 ${i > 0 ? "border-t border-border-subtle" : ""}`}>
+                {editing?.type === "subject" && editing?.id === s.id ? (
+                  <>
+                    <input
+                      type="text"
+                      value={editing.name}
+                      onChange={(e) => setEditing({ ...editing, name: e.target.value })}
+                      className={`flex-1 ${inputClass}`}
+                      autoFocus
+                      onKeyDown={(e) => e.key === "Enter" && updateSubject(s.id, editing.name)}
+                    />
+                    <button onClick={() => updateSubject(s.id, editing.name)} className={btnSave}>Save</button>
+                    <button onClick={() => setEditing(null)} className={btnCancel}>Cancel</button>
+                  </>
+                ) : (
+                  <>
+                    <span className="flex-1 text-sm text-body">{s.name}</span>
+                    <button onClick={() => setEditing({ type: "subject", id: s.id, name: s.name })} className="text-xs text-secondary hover:text-link transition-colors">Rename</button>
+                    <button onClick={() => deleteSubject(s.id)} className="text-xs text-error hover:opacity-80 transition-opacity">Delete</button>
+                  </>
+                )}
+              </li>
+            ))}
+          </ul>
         )}
-        <div className="space-y-2">
-          {subjects.map((s) => (
-            <div key={s.id} className="p-3 border rounded bg-white flex items-center justify-between gap-2">
-              {editing?.type === "subject" && editing?.id === s.id ? (
-                <>
-                  <input
-                    type="text"
-                    value={editing.name}
-                    onChange={(e) => setEditing({ ...editing, name: e.target.value })}
-                    className="flex-1 px-2 py-1 border rounded"
-                    autoFocus
-                  />
-                  <button onClick={() => updateSubject(s.id, editing.name)} className="px-2 py-1 bg-green-600 text-white rounded text-sm">Save</button>
-                  <button onClick={() => setEditing(null)} className="px-2 py-1 bg-gray-400 text-white rounded text-sm">Cancel</button>
-                </>
-              ) : (
-                <>
-                  <span>{s.name}</span>
-                  <div className="flex gap-1">
-                    <button onClick={() => setEditing({ type: "subject", id: s.id, name: s.name })} className="px-2 py-1 text-sm text-blue-600 hover:bg-blue-50 rounded">Rename</button>
-                    <button onClick={() => deleteSubject(s.id)} className="px-2 py-1 text-sm text-red-600 hover:bg-red-50 rounded">Delete</button>
-                  </div>
-                </>
-              )}
-            </div>
-          ))}
-        </div>
-      </div>
+      </Section>
 
       {/* Topics */}
-      <div className="mb-8">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-semibold">Topics</h2>
-          <button
-            onClick={() => setCreating("topic")}
-            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-          >
-            + Add Topic
-          </button>
-        </div>
-        {creating === "topic" && (
-          <div className="mb-4 p-4 border rounded bg-gray-50">
+      <Section
+        title="Topics"
+        count={topics.length}
+        onAdd={() => { setCreating(creating === "topic" ? null : "topic"); setNewItem({ name: "", subjectId: "", topicId: "" }); }}
+        adding={creating === "topic"}
+        addContent={
+          <div className="flex flex-col gap-2">
             <select
               value={newItem.subjectId}
               onChange={(e) => setNewItem({ ...newItem, subjectId: e.target.value })}
-              className="w-full px-3 py-2 border rounded mb-2"
+              className={inputClass}
             >
-              <option value="">Select Subject</option>
-              {subjects.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
+              <option value="">Select subject</option>
+              {subjects.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
-            <input
-              type="text"
-              placeholder="Topic name"
-              value={newItem.name}
-              onChange={(e) => setNewItem({ ...newItem, name: e.target.value })}
-              className="w-full px-3 py-2 border rounded mb-2"
-            />
             <div className="flex gap-2">
-              <button onClick={createTopic} className="px-4 py-2 bg-green-600 text-white rounded">
-                Save
-              </button>
-              <button onClick={() => setCreating(null)} className="px-4 py-2 bg-gray-400 text-white rounded">
-                Cancel
-              </button>
+              <input
+                type="text"
+                placeholder="Topic name"
+                value={newItem.name}
+                onChange={(e) => setNewItem({ ...newItem, name: e.target.value })}
+                className={`flex-1 ${inputClass}`}
+                onKeyDown={(e) => e.key === "Enter" && createTopic()}
+              />
+              <button onClick={createTopic} className={btnSave}>Save</button>
+              <button onClick={() => setCreating(null)} className={btnCancel}>Cancel</button>
             </div>
           </div>
+        }
+      >
+        {topics.length === 0 ? (
+          <p className="px-5 py-6 text-sm text-secondary text-center">No topics yet.</p>
+        ) : (
+          <ul>
+            {topics.map((t, i) => {
+              const subject = subjects.find((s) => s.id === t.subjectId);
+              return (
+                <li key={t.id} className={`px-5 py-3 flex items-center gap-3 ${i > 0 ? "border-t border-border-subtle" : ""}`}>
+                  {editing?.type === "topic" && editing?.id === t.id ? (
+                    <>
+                      <input
+                        type="text"
+                        value={editing.name}
+                        onChange={(e) => setEditing({ ...editing, name: e.target.value })}
+                        className={`flex-1 ${inputClass}`}
+                        autoFocus
+                        onKeyDown={(e) => e.key === "Enter" && updateTopic(t.id, editing.name)}
+                      />
+                      <button onClick={() => updateTopic(t.id, editing.name)} className={btnSave}>Save</button>
+                      <button onClick={() => setEditing(null)} className={btnCancel}>Cancel</button>
+                    </>
+                  ) : (
+                    <>
+                      <span className="flex-1 text-sm text-body">
+                        {t.name}
+                        {subject && (
+                          <span className="ml-2 text-xs text-muted">({subject.name})</span>
+                        )}
+                      </span>
+                      <button onClick={() => setEditing({ type: "topic", id: t.id, name: t.name })} className="text-xs text-secondary hover:text-link transition-colors">Rename</button>
+                      <button onClick={() => deleteTopic(t.id)} className="text-xs text-error hover:opacity-80 transition-opacity">Delete</button>
+                    </>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
         )}
-        <div className="space-y-2">
-          {topics.map((t) => {
-            const subject = subjects.find((s) => s.id === t.subjectId);
-            return (
-              <div key={t.id} className="p-3 border rounded bg-white flex items-center justify-between gap-2">
-                {editing?.type === "topic" && editing?.id === t.id ? (
-                  <>
-                    <input
-                      type="text"
-                      value={editing.name}
-                      onChange={(e) => setEditing({ ...editing, name: e.target.value })}
-                      className="flex-1 px-2 py-1 border rounded"
-                      autoFocus
-                    />
-                    <button onClick={() => updateTopic(t.id, editing.name)} className="px-2 py-1 bg-green-600 text-white rounded text-sm">Save</button>
-                    <button onClick={() => setEditing(null)} className="px-2 py-1 bg-gray-400 text-white rounded text-sm">Cancel</button>
-                  </>
-                ) : (
-                  <>
-                    <span><span className="font-medium">{t.name}</span>
-                    <span className="text-sm text-gray-500 ml-2">({subject?.name})</span></span>
-                    <div className="flex gap-1">
-                      <button onClick={() => setEditing({ type: "topic", id: t.id, name: t.name })} className="px-2 py-1 text-sm text-blue-600 hover:bg-blue-50 rounded">Rename</button>
-                      <button onClick={() => deleteTopic(t.id)} className="px-2 py-1 text-sm text-red-600 hover:bg-red-50 rounded">Delete</button>
-                    </div>
-                  </>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </div>
+      </Section>
 
       {/* Subtopics */}
-      <div>
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-semibold">Subtopics</h2>
-          <button
-            onClick={() => setCreating("subtopic")}
-            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-          >
-            + Add Subtopic
-          </button>
-        </div>
-        {creating === "subtopic" && (
-          <div className="mb-4 p-4 border rounded bg-gray-50">
+      <Section
+        title="Subtopics"
+        count={subtopics.length}
+        onAdd={() => { setCreating(creating === "subtopic" ? null : "subtopic"); setNewItem({ name: "", subjectId: "", topicId: "" }); }}
+        adding={creating === "subtopic"}
+        addContent={
+          <div className="flex flex-col gap-2">
             <select
               value={newItem.topicId}
               onChange={(e) => setNewItem({ ...newItem, topicId: e.target.value })}
-              className="w-full px-3 py-2 border rounded mb-2"
+              className={inputClass}
             >
-              <option value="">Select Topic</option>
-              {topics.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                </option>
-              ))}
+              <option value="">Select topic</option>
+              {topics.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
-            <input
-              type="text"
-              placeholder="Subtopic name"
-              value={newItem.name}
-              onChange={(e) => setNewItem({ ...newItem, name: e.target.value })}
-              className="w-full px-3 py-2 border rounded mb-2"
-            />
             <div className="flex gap-2">
-              <button onClick={createSubtopic} className="px-4 py-2 bg-green-600 text-white rounded">
-                Save
-              </button>
-              <button onClick={() => setCreating(null)} className="px-4 py-2 bg-gray-400 text-white rounded">
-                Cancel
-              </button>
+              <input
+                type="text"
+                placeholder="Subtopic name"
+                value={newItem.name}
+                onChange={(e) => setNewItem({ ...newItem, name: e.target.value })}
+                className={`flex-1 ${inputClass}`}
+                onKeyDown={(e) => e.key === "Enter" && createSubtopic()}
+              />
+              <button onClick={createSubtopic} className={btnSave}>Save</button>
+              <button onClick={() => setCreating(null)} className={btnCancel}>Cancel</button>
             </div>
           </div>
+        }
+      >
+        {subtopics.length === 0 ? (
+          <p className="px-5 py-6 text-sm text-secondary text-center">No subtopics yet.</p>
+        ) : (
+          <ul>
+            {subtopics.map((st, i) => {
+              const topic = topics.find((t) => t.id === st.topicId);
+              return (
+                <li key={st.id} className={`px-5 py-3 flex items-center gap-3 ${i > 0 ? "border-t border-border-subtle" : ""}`}>
+                  {editing?.type === "subtopic" && editing?.id === st.id ? (
+                    <>
+                      <input
+                        type="text"
+                        value={editing.name}
+                        onChange={(e) => setEditing({ ...editing, name: e.target.value })}
+                        className={`flex-1 ${inputClass}`}
+                        autoFocus
+                        onKeyDown={(e) => e.key === "Enter" && updateSubtopic(st.id, editing.name)}
+                      />
+                      <button onClick={() => updateSubtopic(st.id, editing.name)} className={btnSave}>Save</button>
+                      <button onClick={() => setEditing(null)} className={btnCancel}>Cancel</button>
+                    </>
+                  ) : (
+                    <>
+                      <span className="flex-1 text-sm text-body">
+                        {st.name}
+                        {topic && (
+                          <span className="ml-2 text-xs text-muted">({topic.name})</span>
+                        )}
+                      </span>
+                      <button onClick={() => setEditing({ type: "subtopic", id: st.id, name: st.name })} className="text-xs text-secondary hover:text-link transition-colors">Rename</button>
+                      <button onClick={() => deleteSubtopic(st.id)} className="text-xs text-error hover:opacity-80 transition-opacity">Delete</button>
+                    </>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
         )}
-        <div className="space-y-2">
-          {subtopics.map((st) => {
-            const topic = topics.find((t) => t.id === st.topicId);
-            return (
-              <div key={st.id} className="p-3 border rounded bg-white flex items-center justify-between gap-2">
-                {editing?.type === "subtopic" && editing?.id === st.id ? (
-                  <>
-                    <input
-                      type="text"
-                      value={editing.name}
-                      onChange={(e) => setEditing({ ...editing, name: e.target.value })}
-                      className="flex-1 px-2 py-1 border rounded"
-                      autoFocus
-                    />
-                    <button onClick={() => updateSubtopic(st.id, editing.name)} className="px-2 py-1 bg-green-600 text-white rounded text-sm">Save</button>
-                    <button onClick={() => setEditing(null)} className="px-2 py-1 bg-gray-400 text-white rounded text-sm">Cancel</button>
-                  </>
-                ) : (
-                  <>
-                    <span><span className="font-medium">{st.name}</span>
-                    <span className="text-sm text-gray-500 ml-2">({topic?.name})</span></span>
-                    <div className="flex gap-1">
-                      <button onClick={() => setEditing({ type: "subtopic", id: st.id, name: st.name })} className="px-2 py-1 text-sm text-blue-600 hover:bg-blue-50 rounded">Rename</button>
-                      <button onClick={() => deleteSubtopic(st.id)} className="px-2 py-1 text-sm text-red-600 hover:bg-red-50 rounded">Delete</button>
-                    </div>
-                  </>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </div>
+      </Section>
     </div>
   );
 }

@@ -10,6 +10,63 @@ type InvitationInfo = {
   tenantSlug?: string;
 };
 
+// ── Shared auth primitives ───────────────────────────────────────────────────
+
+function CertioraLogo() {
+  return (
+    <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect width="40" height="40" rx="10" fill="#0D0D12" />
+      <path
+        d="M20 8L11 12V19C11 23.4 15 27.5 20 29C25 27.5 29 23.4 29 19V12L20 8Z"
+        fill="none"
+        stroke="white"
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M16 19.5L18.5 22L24 17"
+        stroke="white"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function EyeIcon({ visible }: { visible: boolean }) {
+  return visible ? (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+      <path d="M1 12S5 4 12 4s11 8 11 8-4 8-11 8S1 12 1 12z" stroke="#A1A1AA" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="12" cy="12" r="3" stroke="#A1A1AA" strokeWidth="1.5" />
+    </svg>
+  ) : (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" stroke="#A1A1AA" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      <line x1="1" y1="1" x2="23" y2="23" stroke="#A1A1AA" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function Spinner() {
+  return (
+    <svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none">
+      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeOpacity="0.25" />
+      <path d="M4 12a8 8 0 018-8" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+const inputClass =
+  "w-full h-12 px-4 text-sm rounded-lg border transition-colors focus:outline-none";
+const inputStyle = { borderColor: "#E4E4E7", color: "#0D0D12" };
+const inputFocus = (e: React.FocusEvent<HTMLInputElement>) =>
+  (e.currentTarget.style.borderColor = "#0D0D12");
+const inputBlur = (e: React.FocusEvent<HTMLInputElement>) =>
+  (e.currentTarget.style.borderColor = "#E4E4E7");
+
+// ── Page ─────────────────────────────────────────────────────────────────────
+
 export default function AcceptInvitationPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -17,7 +74,11 @@ export default function AcceptInvitationPage() {
 
   const [invitation, setInvitation] = useState<InvitationInfo | null>(null);
   const [loadError, setLoadError] = useState("");
-  const [formData, setFormData] = useState({ name: "", password: "", confirmPassword: "" });
+  const [name, setName] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
@@ -27,32 +88,29 @@ export default function AcceptInvitationPage() {
       setLoadError("No invitation token provided.");
       return;
     }
-
     fetch(`/api/auth/invitation?token=${token}`)
       .then((res) => {
         if (!res.ok) return res.json().then((d) => Promise.reject(d.error));
         return res.json();
       })
-      .then((data) => setInvitation(data))
+      .then(setInvitation)
       .catch((msg) => setLoadError(msg || "Invalid or expired invitation."));
   }, [token]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (formData.password !== formData.confirmPassword) {
+    if (password !== confirmPassword) {
       setError("Passwords do not match.");
       return;
     }
-
     setLoading(true);
     setError("");
 
     const res = await fetch("/api/auth/accept-invitation", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token, name: formData.name, password: formData.password }),
+      body: JSON.stringify({ token, name, password }),
     });
-
     const data = await res.json();
 
     if (!res.ok) {
@@ -60,125 +118,215 @@ export default function AcceptInvitationPage() {
       setLoading(false);
       return;
     }
-
     setSuccess(true);
   };
 
+  // ── Invalid token ─────────────────────────────────────────────────────────
   if (!token || loadError) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="max-w-md w-full bg-white p-8 rounded-lg shadow-md text-center">
-          <h1 className="text-2xl font-bold mb-4 text-red-600">Invalid Invitation</h1>
-          <p className="text-gray-600 mb-6">{loadError || "No token provided."}</p>
-          <a href="/login" className="text-blue-600 hover:underline">
-            Go to Login
+      <main className="min-h-screen bg-white flex flex-col items-center justify-center px-4">
+        <div className="mb-6">
+          <CertioraLogo />
+        </div>
+        <div className="w-full max-w-[380px] border border-[#E4E4E7] rounded-[20px] p-8 text-center">
+          <p className="text-lg font-bold mb-2" style={{ color: "#0D0D12" }}>
+            Invalid invitation
+          </p>
+          <p className="text-sm mb-6" style={{ color: "#71717A" }}>
+            {loadError || "This invitation link is not valid."}
+          </p>
+          <a
+            href="/login"
+            className="inline-block text-sm font-semibold"
+            style={{ color: "#4B4EFC" }}
+          >
+            Go to login
           </a>
         </div>
-      </div>
+      </main>
     );
   }
 
+  // ── Loading invitation ────────────────────────────────────────────────────
   if (!invitation) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-gray-500">Loading invitation...</div>
-      </div>
+      <main className="min-h-screen bg-white flex flex-col items-center justify-center px-4">
+        <div className="mb-6">
+          <CertioraLogo />
+        </div>
+        <p className="text-sm" style={{ color: "#A1A1AA" }}>
+          Loading your invitation…
+        </p>
+      </main>
     );
   }
 
+  // ── Success ───────────────────────────────────────────────────────────────
   if (success) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="max-w-md w-full bg-white p-8 rounded-lg shadow-md text-center">
-          <div className="text-4xl mb-4">✓</div>
-          <h1 className="text-2xl font-bold mb-2">Account Created!</h1>
-          <p className="text-gray-600 mb-6">
-            You can now log in with your email and password.
+      <main className="min-h-screen bg-white flex flex-col items-center justify-center px-4">
+        <div className="mb-6">
+          <CertioraLogo />
+        </div>
+        <div className="w-full max-w-[380px] border border-[#E4E4E7] rounded-[20px] p-8 text-center">
+          <div
+            className="w-10 h-10 rounded-full flex items-center justify-center mx-auto mb-4"
+            style={{ background: "#F0FDF4" }}
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+              <path d="M5 12L9.5 16.5L19 7" stroke="#16A34A" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </div>
+          <h1 className="text-[22px] font-bold tracking-tight mb-2" style={{ color: "#0D0D12" }}>
+            Account created
+          </h1>
+          <p className="text-sm mb-6" style={{ color: "#71717A" }}>
+            You can now sign in with your email and password.
           </p>
           <button
             onClick={() => router.push("/login")}
-            className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700"
+            className="w-full h-12 rounded-xl text-sm font-semibold text-white transition-opacity hover:opacity-90"
+            style={{ background: "#4B4EFC" }}
           >
-            Go to Login
+            Go to login
           </button>
         </div>
-      </div>
+      </main>
     );
   }
 
+  // ── Signup form ───────────────────────────────────────────────────────────
+  const roleLabel =
+    invitation.role === "ADMIN" ? "administrator" : "student";
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="max-w-md w-full bg-white p-8 rounded-lg shadow-md">
-        <h1 className="text-2xl font-bold mb-2">Complete Your Signup</h1>
-        {invitation.tenantName && (
-          <p className="text-gray-600 mb-6">
-            You have been invited to join <strong>{invitation.tenantName}</strong> as{" "}
-            {invitation.role === "ADMIN" ? "an administrator" : "a student"}.
+    <main className="min-h-screen bg-white flex flex-col items-center justify-center px-4">
+      {/* Logo */}
+      <div className="mb-6">
+        <CertioraLogo />
+      </div>
+
+      {/* Card */}
+      <div className="w-full max-w-[380px] border border-[#E4E4E7] rounded-[20px] p-8">
+        <div className="text-center mb-6">
+          <h1 className="text-[22px] font-bold tracking-tight" style={{ color: "#0D0D12" }}>
+            Create your account
+          </h1>
+          <p className="text-sm mt-1" style={{ color: "#71717A" }}>
+            {invitation.tenantName
+              ? `You're joining ${invitation.tenantName} as ${roleLabel === "administrator" ? "an" : "a"} ${roleLabel}`
+              : `You've been invited as ${roleLabel === "administrator" ? "an" : "a"} ${roleLabel}`}
           </p>
-        )}
-        {!invitation.tenantName && (
-          <p className="text-gray-600 mb-6">
-            You have been invited as {invitation.role === "STUDENT" ? "a student" : invitation.role.toLowerCase()}.
-          </p>
-        )}
+        </div>
+
         {error && (
-          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-4">
+          <div
+            className="mb-4 px-3.5 py-3 rounded-lg text-sm"
+            style={{ background: "#FEF2F2", border: "1px solid #FECACA", color: "#DC2626" }}
+          >
             {error}
           </div>
         )}
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium mb-1">Email</label>
+
+        <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+          {/* Email (read-only) */}
+          <input
+            type="email"
+            value={invitation.email}
+            disabled
+            className="w-full h-12 px-4 text-sm rounded-lg border"
+            style={{ borderColor: "#E4E4E7", color: "#A1A1AA", background: "#FAFAFA" }}
+          />
+
+          {/* Full name */}
+          <input
+            type="text"
+            required
+            placeholder="Full name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className={inputClass}
+            style={inputStyle}
+            onFocus={inputFocus}
+            onBlur={inputBlur}
+          />
+
+          {/* Password */}
+          <div className="relative">
             <input
-              type="email"
-              value={invitation.email}
-              disabled
-              className="w-full px-3 py-2 border rounded bg-gray-50 text-gray-500"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">Full Name</label>
-            <input
-              type="text"
-              required
-              value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              className="w-full px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Your full name"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">Password</label>
-            <input
-              type="password"
+              type={showPassword ? "text" : "password"}
               required
               minLength={8}
-              value={formData.password}
-              onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-              className="w-full px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="At least 8 characters"
+              placeholder="Password (min. 8 characters)"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className={`${inputClass} pr-11`}
+              style={inputStyle}
+              onFocus={inputFocus}
+              onBlur={inputBlur}
             />
+            <button
+              type="button"
+              tabIndex={-1}
+              onClick={() => setShowPassword((v) => !v)}
+              className="absolute right-3.5 top-1/2 -translate-y-1/2 flex items-center justify-center"
+            >
+              <EyeIcon visible={showPassword} />
+            </button>
           </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">Confirm Password</label>
+
+          {/* Confirm password */}
+          <div className="relative">
             <input
-              type="password"
+              type={showConfirm ? "text" : "password"}
               required
-              value={formData.confirmPassword}
-              onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
-              className="w-full px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Re-enter password"
+              placeholder="Confirm password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              className={`${inputClass} pr-11`}
+              style={inputStyle}
+              onFocus={inputFocus}
+              onBlur={inputBlur}
             />
+            <button
+              type="button"
+              tabIndex={-1}
+              onClick={() => setShowConfirm((v) => !v)}
+              className="absolute right-3.5 top-1/2 -translate-y-1/2 flex items-center justify-center"
+            >
+              <EyeIcon visible={showConfirm} />
+            </button>
           </div>
+
+          {/* Submit */}
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700 disabled:opacity-50"
+            className="w-full h-12 rounded-xl text-sm font-semibold transition-all flex items-center justify-center gap-2 mt-0.5"
+            style={{
+              background: loading ? "#E4E4E7" : "#4B4EFC",
+              color: loading ? "#71717A" : "#FFFFFF",
+            }}
           >
-            {loading ? "Creating account..." : "Create Account"}
+            {loading ? (
+              <>
+                <Spinner />
+                Creating account…
+              </>
+            ) : (
+              "Create account"
+            )}
           </button>
         </form>
       </div>
-    </div>
+
+      {/* Footer */}
+      <p className="mt-5 text-xs text-center" style={{ color: "#A1A1AA" }}>
+        Already have an account?{" "}
+        <a href="/login" style={{ color: "#4B4EFC" }}>
+          Sign in
+        </a>
+      </p>
+    </main>
   );
 }

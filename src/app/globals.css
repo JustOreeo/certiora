@@ -1,3 +1,149 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   CERTIORA DESIGN TOKENS
+   ───────────────────────────────────────────────────────────────────────────
+   To retheme the entire app, only touch the values in :root below.
+   Every color, radius, shadow, and font used in the app maps back here.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+@layer base {
+  :root {
+    /* ── Brand primitive scale ──────────────────────────────────────────────
+       The core brand color and its full tonal range.
+       Change --color-brand-500 first, then adjust the rest to match.       */
+    --color-brand-50:  #EEEEFF;
+    --color-brand-100: #D9DAFF;
+    --color-brand-200: #B3B5FF;
+    --color-brand-300: #8D90FF;
+    --color-brand-400: #676AFF;
+    --color-brand-500: #4B4EFC; /* ← PRIMARY BRAND COLOR — change this first */
+    --color-brand-600: #3D40E3;
+    --color-brand-700: #2F32C9;
+    --color-brand-800: #2124B0;
+    --color-brand-900: #141696;
+
+    /* ── Semantic primary ───────────────────────────────────────────────────
+       What "primary" means in the UI. Points into the brand scale above.   */
+    --color-primary:        var(--color-brand-500);
+    --color-primary-hover:  var(--color-brand-600);
+    --color-primary-active: var(--color-brand-700);
+    --color-primary-subtle: var(--color-brand-50);
+    --color-primary-muted:  var(--color-brand-100);
+
+    /* ── Surfaces (backgrounds) ─────────────────────────────────────────────
+       Layer backgrounds from page → card → overlay.                        */
+    --color-surface-base:    #F8F8FC; /* page / app shell background       */
+    --color-surface-card:    #FFFFFF; /* card, panel, modal background      */
+    --color-surface-input:   #FFFFFF; /* form input fill                    */
+    --color-surface-sidebar: #16161F; /* left-nav / sidebar background      */
+    --color-surface-overlay: rgba(0, 0, 0, 0.48); /* modal scrim           */
+
+    /* ── Text ───────────────────────────────────────────────────────────────
+       Four-level text hierarchy + inverse for dark backgrounds.            */
+    --color-text-heading:   #0D0D12; /* headings, labels                   */
+    --color-text-body:      #3D3D4D; /* body copy, form values             */
+    --color-text-secondary: #71717A; /* supporting text, captions          */
+    --color-text-muted:     #A1A1AA; /* placeholders, disabled, hints      */
+    --color-text-inverse:   #FFFFFF; /* text on dark surfaces              */
+    --color-text-link:      var(--color-brand-500);
+    --color-text-link-hover:var(--color-brand-700);
+
+    /* ── Sidebar text ───────────────────────────────────────────────────────
+       Text inside the dark sidebar.                                        */
+    --color-sidebar-text:   #C8C8D8; /* default nav item text             */
+    --color-sidebar-muted:  #6B6B85; /* section labels, inactive icons    */
+    --color-sidebar-active: #FFFFFF; /* active / selected nav item        */
+
+    /* ── Borders ────────────────────────────────────────────────────────────
+       Three levels of border weight + a focus ring color.                  */
+    --color-border:        #E4E4E7; /* default border on cards/inputs      */
+    --color-border-subtle: #F4F4F5; /* very faint dividers / table rows   */
+    --color-border-strong: #D4D4D8; /* emphasized borders                 */
+    --color-border-focus:  var(--color-brand-500); /* focus ring           */
+
+    /* ── Semantic state colors ──────────────────────────────────────────────
+       Used for alerts, badges, toasts, and form validation.
+       Each has a solid color, a soft background, and a border.             */
+    --color-success:        #16A34A;
+    --color-success-bg:     #F0FDF4;
+    --color-success-border: #BBF7D0;
+
+    --color-warning:        #D97706;
+    --color-warning-bg:     #FFFBEB;
+    --color-warning-border: #FDE68A;
+
+    --color-error:          #DC2626;
+    --color-error-bg:       #FEF2F2;
+    --color-error-border:   #FECACA;
+
+    --color-info:           #2563EB;
+    --color-info-bg:        #EFF6FF;
+    --color-info-border:    #BFDBFE;
+
+    /* ── Border radius ──────────────────────────────────────────────────────
+       Consistent rounding from tight (badges) to large (modals).          */
+    --radius-xs:   4px;   /* badges, tiny chips                           */
+    --radius-sm:   6px;   /* inputs, small buttons                        */
+    --radius-md:   10px;  /* buttons, form controls                       */
+    --radius-lg:   14px;  /* cards, panels                                */
+    --radius-xl:   18px;  /* large cards, drawers                         */
+    --radius-2xl:  24px;  /* modals                                       */
+    --radius-full: 9999px;/* pills, avatars, toggles                      */
+
+    /* ── Shadows ────────────────────────────────────────────────────────────
+       Soft, layered shadows that feel light and airy.                      */
+    --shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.04);
+    --shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.08),
+                 0 1px 2px -1px rgba(0, 0, 0, 0.06);
+    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.08),
+                 0 2px 4px -2px rgba(0, 0, 0, 0.06);
+    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.08),
+                 0 4px 6px -4px rgba(0, 0, 0, 0.05);
+    --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.10),
+                 0 8px 10px -6px rgba(0, 0, 0, 0.06);
+
+    /* ── Typography ─────────────────────────────────────────────────────────
+       Font families. Inter is set via next/font in layout.tsx.            */
+    --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+    --font-mono: ui-monospace, 'Cascadia Code', 'Fira Code', monospace;
+  }
+
+  /* ── Base element defaults ───────────────────────────────────────────────
+     Apply token defaults to raw HTML elements so everything inherits them. */
+  html {
+    font-family: var(--font-sans);
+    background-color: var(--color-surface-base);
+    color: var(--color-text-body);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    background-color: var(--color-surface-base);
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    color: var(--color-text-heading);
+    font-weight: 600;
+  }
+
+  a {
+    color: var(--color-text-link);
+  }
+
+  a:hover {
+    color: var(--color-text-link-hover);
+  }
+
+  input, textarea, select {
+    background-color: var(--color-surface-input);
+    border-color: var(--color-border);
+  }
+
+  input:focus, textarea:focus, select:focus {
+    outline-color: var(--color-border-focus);
+  }
+}
