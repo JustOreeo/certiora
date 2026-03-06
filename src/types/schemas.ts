@@ -69,6 +69,10 @@ export const updateDeckSchema = z.object({
   retentionTarget: z.number().min(0.7).max(0.97).optional().nullable(),
 });
 
+export const patchSettingsSchema = z.object({
+  retentionTarget: z.number().min(0.7).max(0.97),
+});
+
 export const createCardSchema = z.object({
   front: z.string().min(1).max(1000).transform((s) => s.trim()),
   back: z.string().min(1).max(2000).transform((s) => s.trim()),

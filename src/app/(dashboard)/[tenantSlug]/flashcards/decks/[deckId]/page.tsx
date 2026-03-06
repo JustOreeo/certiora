@@ -36,6 +36,8 @@ type Deck = {
   sourceDeckId: string | null;
   importedAtVersion: number | null;
   sourceDeck: { version: number } | null;
+  retentionTarget: number | null;
+  suggestedRetentionTarget: number | null;
   cards: Card[];
   cardCount: number;
   dueToday: number;
@@ -64,6 +66,14 @@ export default function DeckDetailPage() {
   const [copyFeedback, setCopyFeedback] = useState(false);
   const [deletingCardId, setDeletingCardId] = useState<string | null>(null);
   const [updateDiffOpen, setUpdateDiffOpen] = useState(false);
+  const [accountRetentionTarget, setAccountRetentionTarget] = useState<number>(0.9);
+  const [retentionSaving, setRetentionSaving] = useState(false);
+  const [deckToast, setDeckToast] = useState<string | null>(null);
+
+  const showDeckToast = (message: string) => {
+    setDeckToast(message);
+    setTimeout(() => setDeckToast(null), 3000);
+  };
 
   const loadDeck = useCallback(async () => {
     if (!deckId) return;
@@ -87,6 +97,21 @@ export default function DeckDetailPage() {
   useEffect(() => {
     loadDeck();
   }, [loadDeck]);
+
+  useEffect(() => {
+    if (!deckId) return;
+    let cancelled = false;
+    fetch("/api/flashcards/settings")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!cancelled && data?.retentionTarget != null)
+          setAccountRetentionTarget(data.retentionTarget);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [deckId]);
 
   const handleAddCard = () => {
     setEditingCard(null);
@@ -176,6 +201,26 @@ export default function DeckDetailPage() {
     }
   };
 
+  const handleRetentionChange = async (value: number | null) => {
+    if (!deck) return;
+    setRetentionSaving(true);
+    try {
+      const res = await fetch(`/api/flashcards/decks/${deckId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ retentionTarget: value }),
+      });
+      if (!res.ok) throw new Error("Failed to update");
+      const data = await res.json();
+      setDeck((d) => (d ? { ...d, retentionTarget: data.retentionTarget } : null));
+      showDeckToast("Deck intensity updated.");
+    } catch (e) {
+      showDeckToast(toUserMessage(e, "Update failed."));
+    } finally {
+      setRetentionSaving(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -201,7 +246,15 @@ export default function DeckDetailPage() {
     (deck.importedAtVersion ?? 0) < deck.sourceDeck.version;
 
   return (
-    <div className="px-4 sm:px-6 md:px-8 py-6 max-w-4xl mx-auto">
+    <div className="px-4 sm:px-6 md:px-8 py-6 max-w-4xl mx-auto relative">
+      {deckToast && (
+        <div
+          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-lg bg-primary text-inverse text-sm font-medium shadow-lg"
+          role="status"
+        >
+          {deckToast}
+        </div>
+      )}
       <div className="mb-6">
         <Link
           href={`/${tenantSlug}/flashcards`}
@@ -246,6 +299,49 @@ export default function DeckDetailPage() {
         {deck.description && (
           <p className="text-sm text-secondary mb-4">{deck.description}</p>
         )}
+
+        {/* Review intensity (per-deck retention) §7.15 */}
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-body mb-2">Review intensity</label>
+          <select
+            value={deck.retentionTarget != null ? String(deck.retentionTarget) : "default"}
+            onChange={(e) => {
+              const v = e.target.value;
+              if (v === "default") handleRetentionChange(null);
+              else handleRetentionChange(Number(v));
+            }}
+            disabled={retentionSaving}
+            className="rounded-lg border border-border bg-surface-base px-3 py-2 text-sm text-body disabled:opacity-50"
+          >
+            <option value="default">
+              Use account default ({Math.round(accountRetentionTarget * 100)}%)
+            </option>
+            <option value="0.7">70% — Lightest</option>
+            <option value="0.8">80% — Light</option>
+            <option value="0.9">90% — Standard</option>
+            <option value="0.95">95% — Thorough</option>
+            <option value="0.97">97% — Maximum</option>
+          </select>
+          {deck.retentionTarget != null && (
+            <p className="text-xs text-secondary mt-2">
+              Cards in this deck will return more or less often than your other decks. Takes effect
+              at your next review.
+            </p>
+          )}
+          {deck.source === "ADMIN_SEEDED" && deck.suggestedRetentionTarget != null && (
+            <p className="text-xs text-secondary mt-1">
+              Your review center suggests {Math.round(deck.suggestedRetentionTarget * 100)}% for this
+              deck.
+            </p>
+          )}
+          {deck.retentionTarget != null && (
+            <p className="text-xs text-secondary mt-1">
+              At {Math.round(deck.retentionTarget * 100)}%, a card you know well will return in ~
+              {Math.max(1, Math.round(21 * (Math.pow(deck.retentionTarget, -2) - 1) * (81 / 19)))}{" "}
+              days.
+            </p>
+          )}
+        </div>
 
         {deck.source !== "ADMIN_SEEDED" && (
           <div className="mb-4">

@@ -9,6 +9,7 @@ import { FlashcardsReviewTab } from "./_components/FlashcardsReviewTab";
 import { FlashcardsMyDecksTab } from "./_components/FlashcardsMyDecksTab";
 import { FlashcardsLibraryTab } from "./_components/FlashcardsLibraryTab";
 import { FlashcardsAnalyticsTab } from "./_components/FlashcardsAnalyticsTab";
+import { FlashcardsSettingsTab } from "./_components/FlashcardsSettingsTab";
 
 type TabId = "review" | "decks" | "library" | "analytics" | "settings";
 
@@ -109,7 +110,7 @@ export default function FlashcardsPage() {
       )}
       {activeTab === "settings" && (
         <div role="tabpanel" aria-labelledby="tab-settings">
-          <PlaceholderTab title="FSRS settings" />
+          <FlashcardsSettingsTab tenantSlug={tenantSlug} />
         </div>
       )}
     </div>

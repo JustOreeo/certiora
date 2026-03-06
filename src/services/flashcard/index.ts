@@ -2,7 +2,7 @@ import { prisma, tenantScope } from "@/lib/db";
 import type { Prisma } from "@prisma/client";
 import { CardState } from "@prisma/client";
 import { randomBytes } from "crypto";
-import { rNow } from "@/lib/fsrs";
+import { rNow, defaultFsrsW } from "@/lib/fsrs";
 import type { FsrsStateInput } from "@/lib/fsrs";
 
 const SHARE_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no ambiguous 0/O, 1/I
@@ -920,5 +920,92 @@ export const flashcardService = {
       decks: deckList,
       reviewHistory,
     };
+  },
+
+  /**
+   * Get FSRS settings for the student. PRD §7.14.
+   * Returns effective retention target (student or tenant), optimization status, review count.
+   */
+  async getSettings(tenantId: string, userId: string) {
+    const [tenantParams, studentParams, reviewCount, customRetentionDecks] =
+      await Promise.all([
+        prisma.fsrsParams.findFirst({
+          where: { tenantId, userId: null },
+        }),
+        prisma.fsrsParams.findUnique({
+          where: { tenantId_userId: { tenantId, userId } },
+        }),
+        prisma.flashcardReviewLog.count({
+          where: { ...tenantScope(tenantId), userId },
+        }),
+        this.listDecksWithCustomRetention(tenantId, userId),
+      ]);
+    const effectiveTarget =
+      studentParams?.retentionTarget ?? tenantParams?.retentionTarget ?? 0.9;
+    return {
+      retentionTarget: effectiveTarget,
+      isOptimized: studentParams?.isOptimized ?? false,
+      optimizedAt: studentParams?.optimizedAt?.toISOString() ?? null,
+      reviewCount,
+      reviewCountAtOptimization: studentParams?.reviewCountAtOptimization ?? null,
+      w: null as number[] | null, // Phase 8: expose if needed
+      tenantDefault: {
+        retentionTarget: tenantParams?.retentionTarget ?? 0.9,
+      },
+      customRetentionDecks,
+    };
+  },
+
+  /**
+   * Update student retention target. Creates student FsrsParams row if needed (copies tenant w).
+   */
+  async updateSettings(
+    tenantId: string,
+    userId: string,
+    input: { retentionTarget: number }
+  ) {
+    const r = Math.max(0.7, Math.min(0.97, input.retentionTarget));
+    const [tenantParams, existing] = await Promise.all([
+      prisma.fsrsParams.findFirst({
+        where: { tenantId, userId: null },
+      }),
+      prisma.fsrsParams.findUnique({
+        where: { tenantId_userId: { tenantId, userId } },
+      }),
+    ]);
+    const w = existing?.w ?? tenantParams?.w ?? defaultFsrsW();
+    await prisma.fsrsParams.upsert({
+      where: { tenantId_userId: { tenantId, userId } },
+      create: {
+        tenantId,
+        userId,
+        w,
+        retentionTarget: r,
+        isOptimized: false,
+      },
+      update: { retentionTarget: r },
+    });
+    return this.getSettings(tenantId, userId);
+  },
+
+  /**
+   * List decks that have a custom retention target (for Settings Panel 3).
+   */
+  async listDecksWithCustomRetention(tenantId: string, userId: string) {
+    const decks = await prisma.flashcardDeck.findMany({
+      where: {
+        ...tenantScope(tenantId),
+        userId,
+        retentionTarget: { not: null },
+      },
+      select: {
+        id: true,
+        name: true,
+        source: true,
+        retentionTarget: true,
+      },
+      orderBy: { name: "asc" },
+    });
+    return decks;
   },
 };
