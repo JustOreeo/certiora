@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { seedTenantFsrsParams } from "@/lib/fsrs";
 import { hash } from "bcryptjs";
 import { z } from "zod";
 
@@ -60,6 +61,9 @@ export async function POST(request: NextRequest) {
     await prisma.$transaction(async (tx) => {
       const tenant = await tx.tenant.create({
         data: { slug: tenantSlug, name: tenantName },
+      });
+      await tx.fsrsParams.create({
+        data: seedTenantFsrsParams(tenant.id),
       });
       await tx.user.create({
         data: {

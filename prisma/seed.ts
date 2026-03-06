@@ -1,9 +1,24 @@
 import { PrismaClient } from "@prisma/client";
 import { hash } from "bcryptjs";
+import { seedTenantFsrsParams } from "../src/lib/fsrs";
 
 const prisma = new PrismaClient();
 
 async function main() {
+  // Backfill FsrsParams for existing tenants (Phase 1: no row yet)
+  const tenants = await prisma.tenant.findMany({ select: { id: true } });
+  for (const t of tenants) {
+    const existing = await prisma.fsrsParams.findFirst({
+      where: { tenantId: t.id, userId: null },
+    });
+    if (!existing) {
+      await prisma.fsrsParams.create({
+        data: seedTenantFsrsParams(t.id),
+      });
+      console.log("FsrsParams seeded for tenant:", t.id);
+    }
+  }
+
   const email = process.env.SUPER_ADMIN_EMAIL;
   const password = process.env.SUPER_ADMIN_PASSWORD;
 
