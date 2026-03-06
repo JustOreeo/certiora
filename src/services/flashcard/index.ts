@@ -126,12 +126,18 @@ export const flashcardService = {
       include: {
         cards: { orderBy: { order: "asc", createdAt: "asc" } },
         _count: { select: { cards: true } },
+        sourceDeck: { select: { version: true } },
       },
     });
     if (!deck) return null;
     const dueToday = await getDueCountForDeck(tenantId, userId, deckId);
-    const { _count, ...rest } = deck;
-    return { ...rest, cardCount: _count.cards, dueToday };
+    const { _count, sourceDeck, ...rest } = deck;
+    return {
+      ...rest,
+      cardCount: _count.cards,
+      dueToday,
+      sourceDeck: sourceDeck ? { version: sourceDeck.version } : null,
+    };
   },
 
   async updateDeck(tenantId: string, userId: string, deckId: string, input: UpdateDeckInput) {
@@ -524,5 +530,140 @@ export const flashcardService = {
       });
     });
     return { deck: copy! };
+  },
+
+  /**
+   * Compute diff between source deck and importer's copy. Returns null if deck has no sourceDeckId.
+   */
+  async getDiff(
+    tenantId: string,
+    userId: string,
+    deckId: string
+  ): Promise<{
+    newCards: { id: string; front: string; back: string }[];
+    updatedCards: { imported: { id: string; front: string; back: string }; source: { id: string; front: string; back: string } }[];
+    removedCards: { id: string; front: string }[];
+    sourceVersion: number;
+  } | null> {
+    const deck = await prisma.flashcardDeck.findFirst({
+      where: { id: deckId, ...tenantScope(tenantId), userId },
+      include: { cards: true },
+    });
+    if (!deck?.sourceDeckId) return null;
+
+    const sourceDeck = await prisma.flashcardDeck.findFirst({
+      where: { id: deck.sourceDeckId, ...tenantScope(tenantId) },
+      include: { cards: { orderBy: { order: "asc", createdAt: "asc" } } },
+    });
+    if (!sourceDeck) return null;
+
+    const importerBySourceId = new Map(
+      deck.cards
+        .filter((c) => c.sourceCardId != null)
+        .map((c) => [c.sourceCardId!, c])
+    );
+    const sourceIds = new Set(sourceDeck.cards.map((c) => c.id));
+
+    const newCards = sourceDeck.cards
+      .filter((src) => !importerBySourceId.has(src.id))
+      .map((c) => ({ id: c.id, front: c.front, back: c.back }));
+
+    const updatedCards: { imported: { id: string; front: string; back: string }; source: { id: string; front: string; back: string } }[] = [];
+    for (const src of sourceDeck.cards) {
+      const imp = importerBySourceId.get(src.id);
+      if (imp && (imp.front !== src.front || imp.back !== src.back)) {
+        updatedCards.push({
+          imported: { id: imp.id, front: imp.front, back: imp.back },
+          source: { id: src.id, front: src.front, back: src.back },
+        });
+      }
+    }
+
+    const removedCards = deck.cards
+      .filter((c) => c.sourceCardId != null && !sourceIds.has(c.sourceCardId))
+      .map((c) => ({ id: c.id, front: c.front }));
+
+    return {
+      newCards,
+      updatedCards,
+      removedCards,
+      sourceVersion: sourceDeck.version,
+    };
+  },
+
+  /**
+   * Apply deck update: add new cards, update changed cards (preserve SRS), mark removed as orphaned, set importedAtVersion.
+   */
+  async applyUpdate(tenantId: string, userId: string, deckId: string): Promise<"ok" | "no_update" | "not_found"> {
+    const deck = await prisma.flashcardDeck.findFirst({
+      where: { id: deckId, ...tenantScope(tenantId), userId },
+      include: { cards: true },
+    });
+    if (!deck?.sourceDeckId) return "not_found";
+
+    const sourceDeck = await prisma.flashcardDeck.findFirst({
+      where: { id: deck.sourceDeckId, ...tenantScope(tenantId) },
+      include: { cards: { orderBy: { order: "asc", createdAt: "asc" } } },
+    });
+    if (!sourceDeck) return "not_found";
+    if (sourceDeck.version <= (deck.importedAtVersion ?? 0)) return "no_update";
+
+    const now = new Date();
+    const importerBySourceId = new Map(
+      deck.cards
+        .filter((c) => c.sourceCardId != null)
+        .map((c) => [c.sourceCardId!, c])
+    );
+    const sourceIds = new Set(sourceDeck.cards.map((c) => c.id));
+    const maxOrder = await prisma.flashcardCard
+      .aggregate({ where: { deckId }, _max: { order: true } })
+      .then((r) => r._max.order ?? -1);
+
+    await prisma.$transaction(async (tx) => {
+      let order = maxOrder + 1;
+      for (const src of sourceDeck.cards) {
+        const imp = importerBySourceId.get(src.id);
+        if (!imp) {
+          const card = await tx.flashcardCard.create({
+            data: {
+              deckId,
+              tenantId,
+              front: src.front,
+              back: src.back,
+              order: order++,
+              sourceCardId: src.id,
+            },
+          });
+          await tx.flashcardCardSrsState.create({
+            data: {
+              tenantId,
+              userId,
+              cardId: card.id,
+              state: CardState.NEW,
+              nextReviewAt: now,
+            },
+          });
+        } else if (imp.front !== src.front || imp.back !== src.back) {
+          await tx.flashcardCard.update({
+            where: { id: imp.id },
+            data: { front: src.front, back: src.back },
+          });
+        }
+      }
+      for (const imp of deck.cards) {
+        if (imp.sourceCardId != null && !sourceIds.has(imp.sourceCardId)) {
+          await tx.flashcardCard.update({
+            where: { id: imp.id },
+            data: { isOrphaned: true },
+          });
+        }
+      }
+      await tx.flashcardDeck.update({
+        where: { id: deckId },
+        data: { importedAtVersion: sourceDeck.version },
+      });
+    });
+
+    return "ok";
   },
 };

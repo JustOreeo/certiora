@@ -6,6 +6,7 @@ import Link from "next/link";
 import { toUserMessage } from "@/lib/errors";
 import { SourceBadge } from "../../_components/SourceBadge";
 import { CardEditorModal } from "../../_components/CardEditorModal";
+import { DeckUpdateDiffModal } from "../../_components/DeckUpdateDiffModal";
 
 function LockIcon({ className }: { className?: string }) {
   return (
@@ -23,7 +24,7 @@ function GlobeIcon({ className }: { className?: string }) {
   );
 }
 
-type Card = { id: string; front: string; back: string; order: number };
+type Card = { id: string; front: string; back: string; order: number; isOrphaned?: boolean };
 type Deck = {
   id: string;
   name: string;
@@ -32,6 +33,9 @@ type Deck = {
   isPublic: boolean;
   shareCode: string | null;
   shareCodeCreatedAt: string | null;
+  sourceDeckId: string | null;
+  importedAtVersion: number | null;
+  sourceDeck: { version: number } | null;
   cards: Card[];
   cardCount: number;
   dueToday: number;
@@ -59,6 +63,7 @@ export default function DeckDetailPage() {
   const [shareLoading, setShareLoading] = useState(false);
   const [copyFeedback, setCopyFeedback] = useState(false);
   const [deletingCardId, setDeletingCardId] = useState<string | null>(null);
+  const [updateDiffOpen, setUpdateDiffOpen] = useState(false);
 
   const loadDeck = useCallback(async () => {
     if (!deckId) return;
@@ -190,6 +195,11 @@ export default function DeckDetailPage() {
     );
   }
 
+  const hasUpdate =
+    deck.sourceDeckId &&
+    deck.sourceDeck &&
+    (deck.importedAtVersion ?? 0) < deck.sourceDeck.version;
+
   return (
     <div className="px-4 sm:px-6 md:px-8 py-6 max-w-4xl mx-auto">
       <div className="mb-6">
@@ -199,6 +209,30 @@ export default function DeckDetailPage() {
         >
           ← Flashcards
         </Link>
+
+        {hasUpdate && (
+          <div
+            className={`mb-4 rounded-lg border px-4 py-3 ${
+              deck.source === "ADMIN_SEEDED"
+                ? "bg-primary-subtle border-primary"
+                : "bg-info-bg border-info-border"
+            }`}
+          >
+            <p className="text-sm font-medium text-body">
+              {deck.source === "ADMIN_SEEDED"
+                ? "Your review center updated this deck."
+                : "This deck has been updated by its author."}
+            </p>
+            <button
+              type="button"
+              onClick={() => setUpdateDiffOpen(true)}
+              className="mt-1 text-sm font-medium text-primary hover:underline"
+            >
+              Review changes →
+            </button>
+          </div>
+        )}
+
         <div className="flex flex-wrap items-center gap-2 mb-1">
           <h1 className="text-xl font-semibold text-body">{deck.name}</h1>
           <SourceBadge source={deck.source} />
@@ -321,6 +355,11 @@ export default function DeckDetailPage() {
             >
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div className="min-w-0 flex-1">
+                  {card.isOrphaned && (
+                    <p className="text-xs text-secondary italic mb-1">
+                      No longer in source deck
+                    </p>
+                  )}
                   <p className="font-medium text-body break-words">
                     {card.front.length > 120 ? `${card.front.slice(0, 120)}…` : card.front}
                   </p>
@@ -365,6 +404,13 @@ export default function DeckDetailPage() {
         onSaved={handleCardSaved}
         deckId={deckId}
         existing={editingCard}
+      />
+
+      <DeckUpdateDiffModal
+        open={updateDiffOpen}
+        deckId={deckId}
+        onClose={() => setUpdateDiffOpen(false)}
+        onApplied={loadDeck}
       />
     </div>
   );
