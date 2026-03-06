@@ -8,17 +8,18 @@ export async function GET(request: NextRequest) {
   if (!session?.tenantId || !session.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  const shareCode = request.nextUrl.searchParams.get("shareCode");
+  let shareCode = request.nextUrl.searchParams.get("shareCode");
   if (!shareCode) {
     return NextResponse.json({ error: "shareCode query parameter required" }, { status: 400 });
   }
+  shareCode = shareCode.trim().toUpperCase().replace(/\s/g, "");
   const result = await flashcardService.previewByShareCode(
     session.tenantId,
     session.user.id,
     shareCode
   );
   if (result === null) {
-    return NextResponse.json({ error: "shareCode query parameter required" }, { status: 400 });
+    return NextResponse.json({ error: "Invalid share code" }, { status: 400 });
   }
   if (result === "invalid") {
     return NextResponse.json(

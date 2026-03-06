@@ -146,4 +146,92 @@
   input:focus, textarea:focus, select:focus {
     outline-color: var(--color-border-focus);
   }
+
+  /* Focus visible for keyboard users (WCAG 2.1) */
+  :focus-visible {
+    outline: 2px solid var(--color-border-focus);
+    outline-offset: 2px;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Flashcard review — card entrance & exit (§18.4)
+   Respects prefers-reduced-motion: reduce (opacity only).
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+@keyframes card-entrance {
+  from {
+    transform: translateX(40px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes card-exit-left {
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(-40px);
+    opacity: 0;
+  }
+}
+
+@keyframes card-exit-again {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-6px); }
+  75% { transform: translateX(6px); }
+}
+
+@keyframes card-exit-easy {
+  from {
+    transform: scale(1);
+    opacity: 1;
+  }
+  to {
+    transform: scale(1.04);
+    opacity: 0;
+  }
+}
+
+.card-anim-entrance {
+  animation: card-entrance 280ms ease-out forwards;
+}
+
+.card-anim-exit-left {
+  animation: card-exit-left 200ms ease-in forwards;
+}
+
+.card-anim-exit-again {
+  animation: card-exit-again 300ms ease-in-out forwards;
+}
+
+.card-anim-exit-again-fade {
+  animation: card-exit-left 300ms ease-in forwards;
+}
+
+.card-anim-exit-easy {
+  animation: card-exit-easy 220ms ease-out forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card-anim-entrance,
+  .card-anim-exit-left,
+  .card-anim-exit-again,
+  .card-anim-exit-again-fade,
+  .card-anim-exit-easy {
+    animation: none;
+  }
+  .card-anim-entrance {
+    opacity: 1;
+  }
+  .card-anim-exit-left,
+  .card-anim-exit-again-fade,
+  .card-anim-exit-easy {
+    opacity: 0;
+  }
 }

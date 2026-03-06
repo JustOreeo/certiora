@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { toUserMessage } from "@/lib/errors";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
 
 type Preview = {
   id: string;
@@ -82,6 +83,8 @@ export function ImportFromLibraryDialog({ open, deckId, onClose, onDone }: Props
     onClose();
   };
 
+  const contentRef = useFocusTrap(open, handleClose);
+
   if (!open) return null;
 
   return (
@@ -91,7 +94,7 @@ export function ImportFromLibraryDialog({ open, deckId, onClose, onDone }: Props
       aria-modal="true"
       aria-labelledby="import-library-deck-title"
     >
-      <div className="bg-surface-card border border-border rounded-xl shadow-lg max-w-md w-full p-6">
+      <div ref={contentRef} className="bg-surface-card border border-border rounded-xl shadow-lg max-w-md w-full p-6 outline-none" tabIndex={-1}>
         <h2 id="import-library-deck-title" className="text-lg font-semibold text-body mb-4">
           {step === "preview" ? "Import from library" : "Importing…"}
         </h2>

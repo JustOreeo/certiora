@@ -315,6 +315,12 @@ export const flashcardService = {
     });
     if (!deck) return "invalid";
     if (deck.userId === userId) return "own";
+    const alreadyImported = await prisma.flashcardDeck
+      .findFirst({
+        where: { ...tenantScope(tenantId), userId, sourceDeckId: deck.id },
+        select: { id: true },
+      })
+      .then((d) => !!d);
     return {
       id: deck.id,
       name: deck.name,
@@ -322,6 +328,7 @@ export const flashcardService = {
       cardCount: deck._count.cards,
       creatorName: deck.user.name ?? "Anonymous",
       sampleFronts: deck.cards.map((c) => c.front),
+      alreadyImported,
     };
   },
 

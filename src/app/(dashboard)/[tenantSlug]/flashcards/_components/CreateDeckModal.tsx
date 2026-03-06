@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { toUserMessage } from "@/lib/errors";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
 
 type Props = { open: boolean; onClose: () => void; onDone: (deckId: string | null) => void };
 
@@ -23,6 +24,8 @@ export function CreateDeckModal({ open, onClose, onDone }: Props) {
     reset();
     onClose();
   };
+
+  const contentRef = useFocusTrap(open, handleClose);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -60,7 +63,7 @@ export function CreateDeckModal({ open, onClose, onDone }: Props) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" role="dialog" aria-modal="true" aria-labelledby="create-deck-title">
-      <div className="bg-surface-card border border-border rounded-xl shadow-lg max-w-md w-full p-6">
+      <div ref={contentRef} className="bg-surface-card border border-border rounded-xl shadow-lg max-w-md w-full p-6 outline-none" tabIndex={-1}>
         <h2 id="create-deck-title" className="text-lg font-semibold text-body mb-4">
           Create deck
         </h2>
@@ -122,14 +125,14 @@ export function CreateDeckModal({ open, onClose, onDone }: Props) {
             <button
               type="button"
               onClick={handleClose}
-              className="h-10 px-4 rounded-lg text-sm font-medium border border-border bg-surface-base hover:bg-surface-card"
+              className="min-h-[44px] px-4 rounded-lg text-sm font-medium border border-border bg-surface-base hover:bg-surface-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={saving || !name.trim()}
-              className="h-10 px-4 rounded-lg text-sm font-semibold bg-primary text-inverse hover:bg-primary-hover disabled:opacity-50"
+              className="min-h-[44px] px-4 rounded-lg text-sm font-semibold bg-primary text-inverse hover:bg-primary-hover disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
             >
               {saving ? "Creating…" : "Create"}
             </button>

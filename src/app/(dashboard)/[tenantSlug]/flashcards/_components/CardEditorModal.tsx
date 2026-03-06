@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { toUserMessage } from "@/lib/errors";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
 
 type Card = { id: string; front: string; back: string };
 
@@ -84,6 +85,8 @@ export function CardEditorModal({ open, onClose, onSaved, deckId, existing }: Pr
     onClose();
   };
 
+  const contentRef = useFocusTrap(open, handleCancel);
+
   if (!open) return null;
 
   return (
@@ -93,7 +96,7 @@ export function CardEditorModal({ open, onClose, onSaved, deckId, existing }: Pr
       aria-modal="true"
       aria-labelledby="card-editor-title"
     >
-      <div className="bg-surface-card border border-border rounded-xl shadow-lg max-w-lg w-full p-6 max-h-[90vh] overflow-y-auto">
+      <div ref={contentRef} className="bg-surface-card border border-border rounded-xl shadow-lg max-w-lg w-full p-6 max-h-[90vh] overflow-y-auto outline-none" tabIndex={-1}>
         <h2 id="card-editor-title" className="text-lg font-semibold text-body mb-4">
           {isEdit ? "Edit card" : "Add card"}
         </h2>

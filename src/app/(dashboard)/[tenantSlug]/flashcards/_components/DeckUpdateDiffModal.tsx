@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { toUserMessage } from "@/lib/errors";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
 
 export type DeckDiff = {
   newCards: { id: string; front: string; back: string }[];
@@ -77,6 +78,8 @@ export function DeckUpdateDiffModal({ open, deckId, onClose, onApplied }: Props)
     await handleApply();
   };
 
+  const contentRef = useFocusTrap(open, onClose);
+
   if (!open) return null;
 
   const totalChanges =
@@ -94,7 +97,7 @@ export function DeckUpdateDiffModal({ open, deckId, onClose, onApplied }: Props)
       aria-modal="true"
       aria-labelledby="deck-update-diff-title"
     >
-      <div className="bg-surface-card border border-border rounded-xl shadow-lg max-w-2xl w-full my-8 max-h-[90vh] flex flex-col">
+      <div ref={contentRef} className="bg-surface-card border border-border rounded-xl shadow-lg max-w-2xl w-full my-8 max-h-[90vh] flex flex-col outline-none" tabIndex={-1}>
         <h2 id="deck-update-diff-title" className="text-lg font-semibold text-body p-6 pb-0">
           Deck updates
         </h2>

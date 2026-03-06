@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { toUserMessage } from "@/lib/errors";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
 
 type Preview = {
   id: string;
@@ -10,6 +11,7 @@ type Preview = {
   cardCount: number;
   creatorName: string;
   sampleFronts: string[];
+  alreadyImported?: boolean;
 };
 
 type Props = { open: boolean; onClose: () => void; onDone: (deckId: string | null) => void };
@@ -19,13 +21,20 @@ export function ImportDeckDialog({ open, onClose, onDone }: Props) {
   const [step, setStep] = useState<"input" | "preview" | "importing">("input");
   const [preview, setPreview] = useState<Preview | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [confirmDuplicate, setConfirmDuplicate] = useState(false);
+
+  const contentRef = useFocusTrap(open, handleClose);
 
   const reset = () => {
     setShareCode("");
     setStep("input");
     setPreview(null);
     setError(null);
+    setConfirmDuplicate(false);
   };
+
+  const normalizeShareCode = (code: string) =>
+    code.trim().toUpperCase().replace(/\s/g, "");
 
   const handleClose = () => {
     reset();
@@ -33,12 +42,13 @@ export function ImportDeckDialog({ open, onClose, onDone }: Props) {
   };
 
   const handlePreview = async () => {
-    const code = shareCode.trim();
+    const code = normalizeShareCode(shareCode);
     if (!code) {
       setError("Enter a share code.");
       return;
     }
     setError(null);
+    setConfirmDuplicate(false);
     try {
       const res = await fetch(`/api/flashcards/preview?shareCode=${encodeURIComponent(code)}`);
       const data = await res.json().catch(() => ({}));
@@ -56,13 +66,17 @@ export function ImportDeckDialog({ open, onClose, onDone }: Props) {
 
   const handleImport = async () => {
     if (!preview) return;
+    if (preview.alreadyImported && !confirmDuplicate) {
+      setError("Confirm that you want to create a duplicate copy.");
+      return;
+    }
     setStep("importing");
     setError(null);
     try {
       const res = await fetch("/api/flashcards/import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ shareCode: shareCode.trim() }),
+        body: JSON.stringify({ shareCode: normalizeShareCode(shareCode) }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -86,7 +100,11 @@ export function ImportDeckDialog({ open, onClose, onDone }: Props) {
       aria-modal="true"
       aria-labelledby="import-deck-title"
     >
-      <div className="bg-surface-card border border-border rounded-xl shadow-lg max-w-md w-full p-6">
+      <div
+        ref={contentRef}
+        className="bg-surface-card border border-border rounded-xl shadow-lg max-w-md w-full p-6 outline-none"
+        tabIndex={-1}
+      >
         <h2 id="import-deck-title" className="text-lg font-semibold text-body mb-4">
           {step === "input" ? "Import deck" : step === "preview" ? "Preview" : "Importing…"}
         </h2>
@@ -132,6 +150,25 @@ export function ImportDeckDialog({ open, onClose, onDone }: Props) {
         {step === "preview" && preview && (
           <>
             <div className="space-y-2 mb-4">
+              {preview.alreadyImported && (
+                <div className="rounded-lg border border-warning-border bg-warning-bg px-3 py-2 mb-3">
+                  <p className="text-sm text-warning font-medium">
+                    You&apos;ve already imported this deck. This will create a duplicate copy.
+                  </p>
+                  <label className="flex items-center gap-2 mt-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={confirmDuplicate}
+                      onChange={(e) => setConfirmDuplicate(e.target.checked)}
+                      className="rounded border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+                      aria-describedby="duplicate-import-warning"
+                    />
+                    <span id="duplicate-import-warning" className="text-sm text-body">
+                      I want to import again
+                    </span>
+                  </label>
+                </div>
+              )}
               <p className="font-medium text-body">{preview.name}</p>
               {preview.description && (
                 <p className="text-sm text-secondary line-clamp-2">{preview.description}</p>
@@ -169,7 +206,8 @@ export function ImportDeckDialog({ open, onClose, onDone }: Props) {
               <button
                 type="button"
                 onClick={handleImport}
-                className="h-10 px-4 rounded-lg text-sm font-semibold bg-primary text-inverse hover:bg-primary-hover"
+                disabled={preview.alreadyImported && !confirmDuplicate}
+                className="h-10 px-4 rounded-lg text-sm font-semibold bg-primary text-inverse hover:bg-primary-hover disabled:opacity-50"
               >
                 Import {preview.cardCount} cards
               </button>
