@@ -17,17 +17,26 @@ export async function POST(request: NextRequest) {
   }
   const parsed = importDeckSchema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json({ error: "shareCode is required" }, { status: 400 });
+    const msg = parsed.error.errors[0]?.message ?? "Provide shareCode or deckId.";
+    return NextResponse.json({ error: msg }, { status: 400 });
   }
-  const result = await flashcardService.importByShareCode(
-    session.tenantId,
-    session.user.id,
-    parsed.data.shareCode
-  );
+
+  const result = parsed.data.shareCode
+    ? await flashcardService.importByShareCode(
+        session.tenantId,
+        session.user.id,
+        parsed.data.shareCode
+      )
+    : await flashcardService.importByDeckId(
+        session.tenantId,
+        session.user.id,
+        parsed.data.deckId!
+      );
+
   if ("error" in result) {
     if (result.error === "invalid") {
       return NextResponse.json(
-        { error: "This share code doesn't exist or has expired." },
+        { error: parsed.data.shareCode ? "This share code doesn't exist or has expired." : "This deck is not available or does not exist." },
         { status: 404 }
       );
     }

@@ -1,4 +1,5 @@
 import { prisma, tenantScope } from "@/lib/db";
+import type { Prisma } from "@prisma/client";
 import { CardState } from "@prisma/client";
 import { randomBytes } from "crypto";
 
@@ -313,6 +314,155 @@ export const flashcardService = {
       creatorName: deck.user.name ?? "Anonymous",
       sampleFronts: deck.cards.map((c) => c.front),
     };
+  },
+
+  /**
+   * List public decks in the tenant for the library. Returns creator display name or tenant name for ADMIN_SEEDED.
+   */
+  async listLibrary(
+    tenantId: string,
+    userId: string,
+    options: { search?: string; sort?: "newest" | "most_imported" | "az"; source?: "ADMIN_SEEDED" | "student" }
+  ) {
+    const { search = "", sort = "newest", source } = options;
+    const term = search.trim();
+    const where: Prisma.FlashcardDeckWhereInput = {
+      ...tenantScope(tenantId),
+      isPublic: true,
+      ...(source === "ADMIN_SEEDED" && { source: "ADMIN_SEEDED" }),
+      ...(source === "student" && { source: { not: "ADMIN_SEEDED" } }),
+      ...(term && {
+        OR: [
+          { name: { contains: term, mode: "insensitive" } },
+          { description: { contains: term, mode: "insensitive" } },
+        ],
+      }),
+    };
+    const orderBy =
+      sort === "most_imported"
+        ? [{ importCount: "desc" as const }, { createdAt: "desc" as const }]
+        : sort === "az"
+          ? [{ name: "asc" as const }]
+          : [{ createdAt: "desc" as const }];
+
+    const decks = await prisma.flashcardDeck.findMany({
+      where,
+      include: {
+        _count: { select: { cards: true } },
+        user: { select: { name: true } },
+        tenant: { select: { name: true } },
+      },
+      orderBy,
+    });
+
+    const myImportedDeckIds = await prisma.flashcardDeck
+      .findMany({
+        where: { ...tenantScope(tenantId), userId, sourceDeckId: { not: null } },
+        select: { sourceDeckId: true },
+      })
+      .then((rows) => new Set(rows.map((r) => r.sourceDeckId).filter(Boolean) as string[]));
+
+    return decks.map((d) => ({
+      id: d.id,
+      name: d.name,
+      description: d.description,
+      source: d.source,
+      cardCount: d._count.cards,
+      creatorName:
+        d.source === "ADMIN_SEEDED"
+          ? (d.tenant.name ?? "Review Center")
+          : (d.user.name ?? "Anonymous"),
+      importCount: d.importCount,
+      isOwn: d.userId === userId,
+      alreadyImported: myImportedDeckIds.has(d.id),
+    }));
+  },
+
+  /**
+   * Preview a public deck by id (for library import). Same shape as share-code preview.
+   */
+  async previewByDeckId(tenantId: string, userId: string, deckId: string) {
+    const deck = await prisma.flashcardDeck.findFirst({
+      where: { id: deckId, ...tenantScope(tenantId), isPublic: true },
+      include: {
+        user: { select: { name: true } },
+        tenant: { select: { name: true } },
+        cards: { orderBy: { order: "asc", createdAt: "asc" }, take: 3, select: { front: true } },
+        _count: { select: { cards: true } },
+      },
+    });
+    if (!deck) return "invalid";
+    if (deck.userId === userId) return "own";
+    return {
+      id: deck.id,
+      name: deck.name,
+      description: deck.description,
+      cardCount: deck._count.cards,
+      creatorName:
+        deck.source === "ADMIN_SEEDED"
+          ? (deck.tenant.name ?? "Review Center")
+          : (deck.user.name ?? "Anonymous"),
+      sampleFronts: deck.cards.map((c) => c.front),
+    };
+  },
+
+  /**
+   * Import deck by library deck id. Creates copy with source SHARED, isPublic false; increments source importCount.
+   */
+  async importByDeckId(tenantId: string, userId: string, deckId: string) {
+    const sourceDeck = await prisma.flashcardDeck.findFirst({
+      where: { id: deckId, ...tenantScope(tenantId), isPublic: true },
+      include: { cards: { orderBy: { order: "asc", createdAt: "asc" } } },
+    });
+    if (!sourceDeck) return { error: "invalid" as const };
+    if (sourceDeck.userId === userId) return { error: "own" as const };
+
+    const copy = await prisma.$transaction(async (tx) => {
+      const deck = await tx.flashcardDeck.create({
+        data: {
+          tenantId,
+          userId,
+          name: sourceDeck.name,
+          description: sourceDeck.description,
+          source: "SHARED",
+          isPublic: false,
+          sourceDeckId: sourceDeck.id,
+          importedAtVersion: sourceDeck.version,
+        },
+      });
+      const now = new Date();
+      for (let i = 0; i < sourceDeck.cards.length; i++) {
+        const src = sourceDeck.cards[i];
+        const card = await tx.flashcardCard.create({
+          data: {
+            deckId: deck.id,
+            tenantId,
+            front: src.front,
+            back: src.back,
+            order: i,
+            sourceCardId: src.id,
+          },
+        });
+        await tx.flashcardCardSrsState.create({
+          data: {
+            tenantId,
+            userId,
+            cardId: card.id,
+            state: CardState.NEW,
+            nextReviewAt: now,
+          },
+        });
+      }
+      await tx.flashcardDeck.update({
+        where: { id: sourceDeck.id },
+        data: { importCount: { increment: 1 } },
+      });
+      return tx.flashcardDeck.findUnique({
+        where: { id: deck.id },
+        include: { _count: { select: { cards: true } } },
+      });
+    });
+    return { deck: copy! };
   },
 
   /**

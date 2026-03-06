@@ -82,6 +82,14 @@ export const updateCardSchema = z
     { message: "Front and back cannot be empty" }
   );
 
-export const importDeckSchema = z.object({
-  shareCode: z.string().min(1),
-});
+export const importDeckSchema = z
+  .object({
+    shareCode: z.string().min(1).optional(),
+    deckId: z.string().min(1).optional(),
+  })
+  .refine((d) => (d.shareCode ? !d.deckId : !!d.deckId), {
+    message: "Provide either shareCode or deckId, not both",
+  })
+  .refine((d) => d.shareCode ?? d.deckId, {
+    message: "Either shareCode or deckId is required",
+  });

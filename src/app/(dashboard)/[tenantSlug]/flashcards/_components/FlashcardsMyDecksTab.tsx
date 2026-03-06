@@ -7,6 +7,22 @@ import { SourceBadge } from "./SourceBadge";
 import { CreateDeckModal } from "./CreateDeckModal";
 import { ImportDeckDialog } from "./ImportDeckDialog";
 
+function LockIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 16 16" fill="currentColor" aria-hidden>
+      <path d="M8 1a3.5 3.5 0 0 0-3.5 3.5v2h-1a1.5 1.5 0 0 0-1.5 1.5v6a1.5 1.5 0 0 0 1.5 1.5h9a1.5 1.5 0 0 0 1.5-1.5v-6a1.5 1.5 0 0 0-1.5-1.5h-1v-2A3.5 3.5 0 0 0 8 1zm2 5.5v-2a2 2 0 1 0-4 0v2h4z" />
+    </svg>
+  );
+}
+
+function GlobeIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 16 16" fill="currentColor" aria-hidden>
+      <path d="M8 0a8 8 0 1 1 0 16A8 8 0 0 1 8 0zM1.5 8a6.5 6.5 0 0 0 11.99 4.5H8.5v-1h4.99A6.5 6.5 0 0 0 1.5 8zm6.5 6.5v-1h4.99a6.5 6.5 0 0 1-4.99 4.5zM8.5 7.5V6.5h4.99a6.5 6.5 0 0 0 0 2H8.5z" />
+    </svg>
+  );
+}
+
 export type DeckListItem = {
   id: string;
   name: string;
@@ -157,11 +173,17 @@ export function FlashcardsMyDecksTab({ tenantSlug }: { tenantSlug: string }) {
                     {deck.name}
                   </Link>
                   <SourceBadge source={deck.source} />
-                  <span className="text-xs text-secondary">
+                  <span className="text-xs text-secondary inline-flex items-center gap-1">
                     {deck.isPublic ? (
-                      <span className="inline-flex items-center gap-1">Public</span>
+                      <>
+                        <GlobeIcon className="w-3.5 h-3.5" aria-hidden />
+                        Public
+                      </>
                     ) : (
-                      <span className="inline-flex items-center gap-1">Private</span>
+                      <>
+                        <LockIcon className="w-3.5 h-3.5" aria-hidden />
+                        Private
+                      </>
                     )}
                   </span>
                 </div>

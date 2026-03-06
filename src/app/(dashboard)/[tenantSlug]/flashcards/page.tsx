@@ -7,6 +7,7 @@ import Link from "next/link";
 import { toUserMessage } from "@/lib/errors";
 import { FlashcardsReviewTab } from "./_components/FlashcardsReviewTab";
 import { FlashcardsMyDecksTab } from "./_components/FlashcardsMyDecksTab";
+import { FlashcardsLibraryTab } from "./_components/FlashcardsLibraryTab";
 
 type TabId = "review" | "decks" | "library" | "analytics" | "settings";
 
@@ -93,7 +94,7 @@ export default function FlashcardsPage() {
       )}
       {activeTab === "library" && (
         <div role="tabpanel" aria-labelledby="tab-library">
-          <PlaceholderTab title="Public deck library" />
+          <FlashcardsLibraryTab tenantSlug={tenantSlug} />
         </div>
       )}
       {activeTab === "analytics" && (

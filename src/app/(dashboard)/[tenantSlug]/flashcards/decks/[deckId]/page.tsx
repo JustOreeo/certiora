@@ -4,8 +4,24 @@ import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { toUserMessage } from "@/lib/errors";
-import { SourceBadge } from "../_components/SourceBadge";
-import { CardEditorModal } from "../_components/CardEditorModal";
+import { SourceBadge } from "../../_components/SourceBadge";
+import { CardEditorModal } from "../../_components/CardEditorModal";
+
+function LockIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 16 16" fill="currentColor" aria-hidden>
+      <path d="M8 1a3.5 3.5 0 0 0-3.5 3.5v2h-1a1.5 1.5 0 0 0-1.5 1.5v6a1.5 1.5 0 0 0 1.5 1.5h9a1.5 1.5 0 0 0 1.5-1.5v-6a1.5 1.5 0 0 0-1.5-1.5h-1v-2A3.5 3.5 0 0 0 8 1zm2 5.5v-2a2 2 0 1 0-4 0v2h4z" />
+    </svg>
+  );
+}
+
+function GlobeIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 16 16" fill="currentColor" aria-hidden>
+      <path d="M8 0a8 8 0 1 1 0 16A8 8 0 0 1 8 0zM1.5 8a6.5 6.5 0 0 0 11.99 4.5H8.5v-1h4.99A6.5 6.5 0 0 0 1.5 8zm6.5 6.5v-1h4.99a6.5 6.5 0 0 1-4.99 4.5zM8.5 7.5V6.5h4.99a6.5 6.5 0 0 0 0 2H8.5z" />
+    </svg>
+  );
+}
 
 type Card = { id: string; front: string; back: string; order: number };
 type Deck = {
@@ -198,14 +214,33 @@ export default function DeckDetailPage() {
         )}
 
         {deck.source !== "ADMIN_SEEDED" && (
-          <div className="flex items-center gap-2 mb-4">
-            <button
-              type="button"
-              onClick={togglePublic}
-              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm border border-border bg-surface-base hover:bg-surface-card"
-            >
-              {deck.isPublic ? "Public" : "Private"}
-            </button>
+          <div className="mb-4">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={togglePublic}
+                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm border border-border bg-surface-base hover:bg-surface-card"
+                aria-pressed={deck.isPublic}
+              >
+                {deck.isPublic ? (
+                  <>
+                    <GlobeIcon className="w-4 h-4" aria-hidden />
+                    Public
+                  </>
+                ) : (
+                  <>
+                    <LockIcon className="w-4 h-4" aria-hidden />
+                    Private
+                  </>
+                )}
+              </button>
+            </div>
+            {deck.isPublic && (
+              <p className="mt-2 text-xs text-secondary">
+                Anyone in your organization will be able to see and import this deck. Only card
+                content is shared — not your progress.
+              </p>
+            )}
           </div>
         )}
 
