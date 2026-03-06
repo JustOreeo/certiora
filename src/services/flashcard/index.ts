@@ -4,6 +4,7 @@ import { CardState } from "@prisma/client";
 import { randomBytes } from "crypto";
 import { rNow, defaultFsrsW } from "@/lib/fsrs";
 import type { FsrsStateInput } from "@/lib/fsrs";
+import { addFsrsOptimizeJob } from "@/lib/queue";
 
 const SHARE_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no ambiguous 0/O, 1/I
 const SHARE_CODE_LENGTH = 8;
@@ -986,6 +987,62 @@ export const flashcardService = {
       update: { retentionTarget: r },
     });
     return this.getSettings(tenantId, userId);
+  },
+
+  /**
+   * Enqueue fsrs-optimize job if conditions met: count >= 1000 and (first time or +200 since last).
+   * Call after grading a custom card. PRD §9.10 triggers.
+   */
+  async enqueueFsrsOptimizeIfNeeded(tenantId: string, userId: string): Promise<boolean> {
+    try {
+      const [reviewCount, studentParams] = await Promise.all([
+        prisma.flashcardReviewLog.count({
+          where: { ...tenantScope(tenantId), userId },
+        }),
+        prisma.fsrsParams.findUnique({
+          where: { tenantId_userId: { tenantId, userId } },
+          select: { reviewCountAtOptimization: true },
+        }),
+      ]);
+      if (reviewCount < 1000) return false;
+      const atOpt = studentParams?.reviewCountAtOptimization ?? 0;
+      if (atOpt > 0 && reviewCount - atOpt < 200) return false;
+      return addFsrsOptimizeJob({ userId, tenantId });
+    } catch {
+      return false;
+    }
+  },
+
+  /**
+   * Reset student FSRS params to tenant default (w only). Sets isOptimized = false. retentionTarget unchanged.
+   */
+  async resetFsrsParams(tenantId: string, userId: string) {
+    const [tenantParams, studentParams] = await Promise.all([
+      prisma.fsrsParams.findFirst({
+        where: { tenantId, userId: null },
+      }),
+      prisma.fsrsParams.findUnique({
+        where: { tenantId_userId: { tenantId, userId } },
+      }),
+    ]);
+    const w = tenantParams?.w ?? defaultFsrsW();
+    const retentionTarget = studentParams?.retentionTarget ?? tenantParams?.retentionTarget ?? 0.9;
+    await prisma.fsrsParams.upsert({
+      where: { tenantId_userId: { tenantId, userId } },
+      create: {
+        tenantId,
+        userId,
+        w,
+        retentionTarget,
+        isOptimized: false,
+      },
+      update: {
+        w,
+        isOptimized: false,
+        optimizedAt: null,
+        reviewCountAtOptimization: null,
+      },
+    });
   },
 
   /**

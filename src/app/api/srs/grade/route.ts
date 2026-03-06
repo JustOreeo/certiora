@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { srsService } from "@/services/srs";
+import { flashcardService } from "@/services/flashcard";
 import { gradeCardSchema, gradeCardUnifiedSchema } from "@/types/schemas";
 
 export async function POST(request: NextRequest) {
@@ -30,6 +31,9 @@ export async function POST(request: NextRequest) {
         id: unified.data.id,
         grade: unified.data.grade as 1 | 2 | 3 | 4,
       });
+      if (unified.data.cardType === "custom") {
+        flashcardService.enqueueFsrsOptimizeIfNeeded(session.tenantId, session.user.id).catch(() => {});
+      }
       return NextResponse.json(result);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Unknown error";

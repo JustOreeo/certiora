@@ -21,3 +21,5 @@ export {
   initialDifficulty,
 } from "./formulas";
 export { seedTenantFsrsParams, defaultFsrsW } from "./seed";
+export { optimize, computeLoss } from "./optimizer";
+export type { ReviewLogRow } from "./optimizer";

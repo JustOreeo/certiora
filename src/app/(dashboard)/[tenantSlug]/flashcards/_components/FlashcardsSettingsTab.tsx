@@ -18,6 +18,17 @@ function intervalDaysAt(retentionTarget: number): number {
   return Math.max(1, Math.round(21 * mult));
 }
 
+function formatOptimizedAt(iso: string): string {
+  const d = new Date(iso);
+  const now = new Date();
+  const days = Math.floor((now.getTime() - d.getTime()) / (24 * 60 * 60 * 1000));
+  if (days === 0) return "today";
+  if (days === 1) return "yesterday";
+  if (days < 7) return `${days} days ago`;
+  if (days < 30) return `${Math.floor(days / 7)} weeks ago`;
+  return d.toLocaleDateString();
+}
+
 export type FsrsSettings = {
   retentionTarget: number;
   isOptimized: boolean;
@@ -32,6 +43,7 @@ export type FsrsSettings = {
     source: string | null;
     retentionTarget: number | null;
   }>;
+  optimizeJobQueuedOrActive?: boolean;
 };
 
 function Spinner() {
@@ -72,6 +84,47 @@ export function FlashcardsSettingsTab({ tenantSlug }: { tenantSlug: string }) {
   useEffect(() => {
     loadSettings();
   }, [loadSettings]);
+
+  // Poll every 5s when optimization job is queued or running (State C)
+  const isPolling = settings?.optimizeJobQueuedOrActive === true;
+  useEffect(() => {
+    if (!isPolling) return;
+    const id = setInterval(loadSettings, 5000);
+    return () => clearInterval(id);
+  }, [isPolling, loadSettings]);
+
+  const handleOptimizeNow = async () => {
+    try {
+      const res = await fetch("/api/flashcards/settings/optimize", { method: "POST" });
+      if (res.status === 400) {
+        showToast("Need at least 1,000 reviews to optimize.");
+        return;
+      }
+      if (res.status === 409) {
+        showToast("Optimization already queued or running.");
+        loadSettings();
+        return;
+      }
+      if (!res.ok) throw new Error("Failed to start");
+      loadSettings();
+      showToast("Optimization started. This usually takes under a minute.");
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "Failed to start optimization.");
+    }
+  };
+
+  const handleResetParams = async () => {
+    if (!confirm("Reset to FSRS default parameters? Your personal optimization data will not be deleted — you can re-run it at any time.")) return;
+    try {
+      const res = await fetch("/api/flashcards/settings/reset-params", { method: "POST" });
+      if (!res.ok) throw new Error("Failed to reset");
+      const data = await res.json();
+      setSettings(data);
+      showToast("Parameters reset to defaults.");
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "Reset failed.");
+    }
+  };
 
   const handleRetentionChange = async (value: number) => {
     if (!settings || saving || Math.abs(settings.retentionTarget - value) < 0.001) return;
@@ -168,27 +221,96 @@ export function FlashcardsSettingsTab({ tenantSlug }: { tenantSlug: string }) {
         </p>
       </div>
 
-      {/* Panel 2 — Personalized schedule (Phase 8 placeholder) */}
+      {/* Panel 2 — Personalized schedule (Phase 8) */}
       <div className="bg-surface-card border border-border rounded-xl p-5 shadow-sm">
         <h2 className="text-base font-semibold text-body mb-1">Personalized schedule</h2>
         <p className="text-sm text-secondary mb-4">
           The FSRS algorithm can learn your personal forgetting curve. Once it does, your review
           intervals will be calibrated to how quickly you actually forget.
         </p>
-        <div className="rounded-lg bg-surface-base border border-border px-4 py-6 text-center">
-          <p className="text-sm text-secondary">
-            {settings.reviewCount} / 1,000 reviews — personalization unlocks at 1,000 reviews.
-          </p>
-          <div
-            className="mt-3 h-2 rounded-full bg-border overflow-hidden"
-            style={{ maxWidth: 320 }}
-          >
+
+        {/* State A: < 1,000 reviews */}
+        {settings.reviewCount < 1000 && (
+          <div className="rounded-lg bg-surface-base border border-border px-4 py-6 text-center">
             <div
-              className="h-full bg-primary transition-all"
-              style={{ width: `${Math.min(100, (settings.reviewCount / 1000) * 100)}%` }}
-            />
+              className="mx-auto h-2 rounded-full bg-border overflow-hidden"
+              style={{ maxWidth: 320 }}
+            >
+              <div
+                className="h-full bg-primary transition-all"
+                style={{ width: `${Math.min(100, (settings.reviewCount / 1000) * 100)}%` }}
+              />
+            </div>
+            <p className="text-sm text-secondary mt-3">
+              {settings.reviewCount} / 1,000 reviews
+            </p>
+            <p className="text-xs text-secondary mt-1">
+              {1000 - settings.reviewCount} reviews remaining. Personalization unlocks at 1,000 reviews.
+            </p>
           </div>
-        </div>
+        )}
+
+        {/* State B: ≥ 1,000, not optimized, job not queued */}
+        {settings.reviewCount >= 1000 && !settings.isOptimized && !settings.optimizeJobQueuedOrActive && (
+          <div className="rounded-lg bg-surface-base border border-border px-4 py-6 text-center">
+            <p className="text-sm text-success font-medium">You&apos;ve completed {settings.reviewCount.toLocaleString()} reviews.</p>
+            <p className="text-sm text-secondary mt-1">Your schedule can now be personalized.</p>
+            <button
+              type="button"
+              onClick={handleOptimizeNow}
+              className="mt-4 h-10 px-5 rounded-lg text-sm font-semibold bg-primary text-inverse hover:bg-primary-hover"
+            >
+              Optimize now
+            </button>
+          </div>
+        )}
+
+        {/* State C: Job queued or running */}
+        {settings.optimizeJobQueuedOrActive && (
+          <div className="rounded-lg bg-surface-base border border-border px-4 py-6 text-center">
+            <Spinner />
+            <p className="text-sm text-body mt-3">Personalizing your schedule…</p>
+            <p className="text-xs text-secondary mt-1">This usually takes under a minute.</p>
+          </div>
+        )}
+
+        {/* State D: Optimized */}
+        {settings.reviewCount >= 1000 && settings.isOptimized && !settings.optimizeJobQueuedOrActive && (
+          <div className="rounded-lg bg-surface-base border border-border px-4 py-6">
+            <p className="text-sm text-success font-medium">Personalized schedule active</p>
+            <p className="text-xs text-secondary mt-1">
+              Optimized {settings.optimizedAt ? formatOptimizedAt(settings.optimizedAt) : ""}
+              {settings.reviewCountAtOptimization != null && (
+                <> · Based on {settings.reviewCountAtOptimization.toLocaleString()} reviews</>
+              )}
+            </p>
+            <div className="flex flex-wrap gap-2 mt-4">
+              <button
+                type="button"
+                onClick={handleOptimizeNow}
+                disabled={
+                  settings.reviewCountAtOptimization != null &&
+                  settings.reviewCount - settings.reviewCountAtOptimization < 200
+                }
+                className="h-9 px-4 rounded-lg text-sm font-medium border border-border bg-surface-card hover:bg-surface-base disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Run again
+              </button>
+              <button
+                type="button"
+                onClick={handleResetParams}
+                className="h-9 px-4 rounded-lg text-sm font-medium text-secondary hover:text-body"
+              >
+                Reset to defaults
+              </button>
+            </div>
+            {settings.reviewCountAtOptimization != null && settings.reviewCount - settings.reviewCountAtOptimization < 200 && (
+              <p className="text-xs text-secondary mt-2">
+                Run again is available after 200 new reviews ({(settings.reviewCountAtOptimization + 200) - settings.reviewCount} more).
+              </p>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Panel 3 — Per-deck intensity overview */}

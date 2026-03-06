@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { flashcardService } from "@/services/flashcard";
+import { isFsrsOptimizeJobQueuedOrActive } from "@/lib/queue";
 import { patchSettingsSchema } from "@/types/schemas";
 
 export async function GET() {
@@ -10,11 +11,11 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   try {
-    const settings = await flashcardService.getSettings(
-      session.tenantId,
-      session.user.id
-    );
-    return NextResponse.json(settings);
+    const [settings, optimizeJobQueuedOrActive] = await Promise.all([
+      flashcardService.getSettings(session.tenantId, session.user.id),
+      isFsrsOptimizeJobQueuedOrActive(session.user.id),
+    ]);
+    return NextResponse.json({ ...settings, optimizeJobQueuedOrActive });
   } catch (error) {
     console.error("Flashcard settings GET error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
