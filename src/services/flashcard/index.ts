@@ -2,6 +2,8 @@ import { prisma, tenantScope } from "@/lib/db";
 import type { Prisma } from "@prisma/client";
 import { CardState } from "@prisma/client";
 import { randomBytes } from "crypto";
+import { rNow } from "@/lib/fsrs";
+import type { FsrsStateInput } from "@/lib/fsrs";
 
 const SHARE_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no ambiguous 0/O, 1/I
 const SHARE_CODE_LENGTH = 8;
@@ -665,5 +667,258 @@ export const flashcardService = {
     });
 
     return "ok";
+  },
+
+  /**
+   * Flashcard analytics for the student. PRD §7.12.
+   * Data from FlashcardCardSrsState and FlashcardReviewLog only (no legacy SrsCard).
+   */
+  async getFlashcardAnalytics(tenantId: string, userId: string) {
+    const now = new Date();
+    const todayEnd = new Date(now);
+    todayEnd.setHours(23, 59, 59, 999);
+    const in14Days = new Date(now);
+    in14Days.setDate(in14Days.getDate() + 14);
+    const thirtyDaysAgo = new Date(now);
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 29);
+    thirtyDaysAgo.setHours(0, 0, 0, 0);
+
+    const [states, reviewLogs, decks] = await Promise.all([
+      prisma.flashcardCardSrsState.findMany({
+        where: { ...tenantScope(tenantId), userId },
+        select: {
+          id: true,
+          state: true,
+          stability: true,
+          lastReviewAt: true,
+          scheduledDays: true,
+          nextReviewAt: true,
+          card: { select: { deckId: true } },
+        },
+      }),
+      prisma.flashcardReviewLog.findMany({
+        where: { ...tenantScope(tenantId), userId, reviewedAt: { gte: thirtyDaysAgo } },
+        select: { grade: true, deckId: true, reviewedAt: true },
+      }),
+      prisma.flashcardDeck.findMany({
+        where: { ...tenantScope(tenantId), userId },
+        select: { id: true, name: true, source: true },
+      }),
+    ]);
+
+    const deckMap = new Map(decks.map((d) => [d.id, d]));
+    const stateList = states as Array<{
+      state: CardState;
+      stability: number | null;
+      lastReviewAt: Date | null;
+      scheduledDays: number;
+      nextReviewAt: Date;
+      card: { deckId: string };
+    }>;
+
+    // Overall counts
+    let newCount = 0,
+      learningCount = 0,
+      reviewCount = 0,
+      relearningCount = 0,
+      matureCount = 0;
+    let stabilitySum = 0;
+    let stabilityDenom = 0;
+    const rNowValues: number[] = [];
+    let cardsAtRisk = 0;
+
+    for (const s of stateList) {
+      if (s.state === CardState.NEW) newCount++;
+      else if (s.state === CardState.LEARNING) learningCount++;
+      else if (s.state === CardState.REVIEW) {
+        reviewCount++;
+        if (s.scheduledDays >= 21) matureCount++;
+        if (s.stability != null && s.stability > 0) {
+          stabilitySum += s.stability;
+          stabilityDenom++;
+        }
+      } else if (s.state === CardState.RELEARNING) relearningCount++;
+
+      const input: FsrsStateInput = {
+        state: s.state as "NEW" | "LEARNING" | "REVIEW" | "RELEARNING",
+        stability: s.stability,
+        difficulty: null,
+        elapsedDays: 0,
+        scheduledDays: s.scheduledDays,
+        reps: 0,
+        lapses: 0,
+        lastReviewAt: s.lastReviewAt,
+      };
+      const r = rNow(input, now);
+      if (r != null) {
+        rNowValues.push(r);
+        if (r < 0.7) cardsAtRisk++;
+      }
+    }
+
+    const total = stateList.length;
+    const avgStability = stabilityDenom > 0 ? stabilitySum / stabilityDenom : null;
+    const avgRetrievability =
+      rNowValues.length > 0 ? (rNowValues.reduce((a, b) => a + b, 0) / rNowValues.length) * 100 : null;
+
+    // Retention from FlashcardReviewLog
+    const totalReviews = reviewLogs.length;
+    const correctReviews = reviewLogs.filter((l) => l.grade >= 3).length;
+    const retentionRate = totalReviews > 0 ? (correctReviews / totalReviews) * 100 : null;
+
+    // 14-day forecast: count by calendar day
+    const forecast: { date: string; count: number }[] = [];
+    for (let i = 0; i < 14; i++) {
+      const d = new Date(now);
+      d.setDate(d.getDate() + i);
+      const dayStart = new Date(d);
+      dayStart.setHours(0, 0, 0, 0);
+      const dayEnd = new Date(d);
+      dayEnd.setHours(23, 59, 59, 999);
+      const count = stateList.filter(
+        (s) => s.nextReviewAt >= dayStart && s.nextReviewAt <= dayEnd
+      ).length;
+      forecast.push({
+        date: dayStart.toISOString().slice(0, 10),
+        count,
+      });
+    }
+
+    // Per-deck breakdown (only decks that have at least one SRS state)
+    const byDeck = new Map<
+      string,
+      {
+        total: number;
+        new: number;
+        learning: number;
+        review: number;
+        relearning: number;
+        mature: number;
+        stabilitySum: number;
+        stabilityDenom: number;
+        rNowSum: number;
+        rNowDenom: number;
+        dueToday: number;
+        logGrades: number[];
+      }
+    >();
+
+    for (const s of stateList) {
+      const deckId = s.card.deckId;
+      if (!byDeck.has(deckId)) {
+        byDeck.set(deckId, {
+          total: 0,
+          new: 0,
+          learning: 0,
+          review: 0,
+          relearning: 0,
+          mature: 0,
+          stabilitySum: 0,
+          stabilityDenom: 0,
+          rNowSum: 0,
+          rNowDenom: 0,
+          dueToday: 0,
+          logGrades: [],
+        });
+      }
+      const rec = byDeck.get(deckId)!;
+      rec.total++;
+      if (s.state === CardState.NEW) rec.new++;
+      else if (s.state === CardState.LEARNING) rec.learning++;
+      else if (s.state === CardState.REVIEW) {
+        rec.review++;
+        if (s.scheduledDays >= 21) rec.mature++;
+        if (s.stability != null && s.stability > 0) {
+          rec.stabilitySum += s.stability;
+          rec.stabilityDenom++;
+        }
+      } else if (s.state === CardState.RELEARNING) rec.relearning++;
+
+      const input: FsrsStateInput = {
+        state: s.state as "NEW" | "LEARNING" | "REVIEW" | "RELEARNING",
+        stability: s.stability,
+        difficulty: null,
+        elapsedDays: 0,
+        scheduledDays: s.scheduledDays,
+        reps: 0,
+        lapses: 0,
+        lastReviewAt: s.lastReviewAt,
+      };
+      const r = rNow(input, now);
+      if (r != null) {
+        rec.rNowSum += r;
+        rec.rNowDenom++;
+      }
+      if (s.nextReviewAt <= todayEnd) rec.dueToday++;
+    }
+
+    for (const log of reviewLogs) {
+      const rec = byDeck.get(log.deckId);
+      if (rec) rec.logGrades.push(log.grade);
+    }
+
+    const deckList = Array.from(byDeck.entries())
+      .map(([deckId, rec]) => {
+        const deck = deckMap.get(deckId);
+        const retention =
+          rec.logGrades.length > 0
+            ? (rec.logGrades.filter((g) => g >= 3).length / rec.logGrades.length) * 100
+            : null;
+        return {
+          deckId,
+          name: deck?.name ?? "Unknown",
+          source: deck?.source ?? null,
+          total: rec.total,
+          new: rec.new,
+          learning: rec.learning,
+          review: rec.review,
+          relearning: rec.relearning,
+          mature: rec.mature,
+          avgStability: rec.stabilityDenom > 0 ? rec.stabilitySum / rec.stabilityDenom : null,
+          retentionRate: retention,
+          avgRetrievability:
+            rec.rNowDenom > 0 ? (rec.rNowSum / rec.rNowDenom) * 100 : null,
+          dueToday: rec.dueToday,
+        };
+      })
+      .sort((a, b) => b.dueToday - a.dueToday);
+
+    // 30-day review history (last 30 calendar days including today)
+    const historyByDay = new Map<string, { count: number; correctCount: number }>();
+    for (let i = 0; i < 30; i++) {
+      const d = new Date(thirtyDaysAgo);
+      d.setDate(d.getDate() + i);
+      const key = d.toISOString().slice(0, 10);
+      historyByDay.set(key, { count: 0, correctCount: 0 });
+    }
+    for (const log of reviewLogs) {
+      const key = new Date(log.reviewedAt).toISOString().slice(0, 10);
+      const rec = historyByDay.get(key);
+      if (rec) {
+        rec.count++;
+        if (log.grade >= 3) rec.correctCount++;
+      }
+    }
+    const reviewHistory = Array.from(historyByDay.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, { count, correctCount }]) => ({ date, count, correctCount }));
+
+    return {
+      overall: {
+        total,
+        new: newCount,
+        learning: learningCount,
+        review: reviewCount,
+        relearning: relearningCount,
+        mature: matureCount,
+        retentionRate,
+        avgStability,
+        avgRetrievability,
+        cardsAtRisk,
+      },
+      forecast,
+      decks: deckList,
+      reviewHistory,
+    };
   },
 };

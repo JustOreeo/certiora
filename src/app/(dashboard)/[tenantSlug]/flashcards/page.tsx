@@ -8,6 +8,7 @@ import { toUserMessage } from "@/lib/errors";
 import { FlashcardsReviewTab } from "./_components/FlashcardsReviewTab";
 import { FlashcardsMyDecksTab } from "./_components/FlashcardsMyDecksTab";
 import { FlashcardsLibraryTab } from "./_components/FlashcardsLibraryTab";
+import { FlashcardsAnalyticsTab } from "./_components/FlashcardsAnalyticsTab";
 
 type TabId = "review" | "decks" | "library" | "analytics" | "settings";
 
@@ -67,6 +68,7 @@ export default function FlashcardsPage() {
         {TABS.map((tab) => (
           <button
             key={tab.id}
+            id={`tab-${tab.id}`}
             type="button"
             onClick={() => setActiveTab(tab.id)}
             className={`px-4 py-2.5 text-sm font-medium rounded-t-lg transition-colors ${
@@ -99,7 +101,10 @@ export default function FlashcardsPage() {
       )}
       {activeTab === "analytics" && (
         <div role="tabpanel" aria-labelledby="tab-analytics">
-          <PlaceholderTab title="Flashcard analytics" />
+          <FlashcardsAnalyticsTab
+            tenantSlug={tenantSlug}
+            onNavigateToReview={() => setActiveTab("review")}
+          />
         </div>
       )}
       {activeTab === "settings" && (
