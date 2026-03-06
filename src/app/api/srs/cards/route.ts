@@ -11,12 +11,15 @@ export async function GET(request: NextRequest) {
 
   const { searchParams } = new URL(request.url);
   const dueOnly = searchParams.get("dueOnly") !== "false";
+  const deckId = searchParams.get("deckId") ?? undefined;
 
   try {
     if (dueOnly) {
       const cards = await srsService.getDueCards(
         session.tenantId,
-        session.user.id
+        session.user.id,
+        50,
+        deckId ? { deckId } : undefined
       );
       return NextResponse.json(cards);
     }

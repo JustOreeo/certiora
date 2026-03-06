@@ -1,5 +1,8 @@
 import { prisma, tenantScope } from "@/lib/db";
 import { SRS_DEFAULTS } from "@/config/constants";
+import { schedule, intervalPreview } from "@/lib/fsrs";
+import { resolveRetentionTarget } from "@/lib/fsrs";
+import type { FsrsStateInput } from "@/lib/fsrs";
 
 /**
  * SM-2: returns next interval in days and new ease factor.
@@ -33,12 +36,48 @@ function sm2(
   return { interval: nextInterval, easeFactor: ef };
 }
 
+/** Map FSRS grade 1–4 to SM-2 quality 0–5: Again=0, Hard=1, Good=3, Easy=5 */
+function gradeToQuality(grade: 1 | 2 | 3 | 4): number {
+  return grade === 1 ? 0 : grade === 2 ? 1 : grade === 3 ? 3 : 5;
+}
+
 export type GradeCardInput = {
   tenantId: string;
   userId: string;
   questionId: string;
   quality: number; // 0-5
 };
+
+/** Unified grade input: cardType + id + grade 1–4 */
+export type GradeCardUnifiedInput = {
+  tenantId: string;
+  userId: string;
+  cardType: "exam" | "custom";
+  id: string; // SrsCard.id for exam, FlashcardCardSrsState.id for custom
+  grade: 1 | 2 | 3 | 4;
+};
+
+export type DueCardExam = {
+  cardType: "exam";
+  id: string;
+  questionId: string;
+  question: { id: string; stem: string; options: unknown[]; explanation?: string | null };
+  nextReviewAt: string;
+};
+
+export type DueCardCustom = {
+  cardType: "custom";
+  id: string;
+  cardId: string;
+  front: string;
+  back: string;
+  deckId: string;
+  deckName: string;
+  nextReviewAt: string;
+  intervalPreview?: { grade: 1 | 2 | 3 | 4; scheduledDays: number }[];
+};
+
+export type DueCard = DueCardExam | DueCardCustom;
 
 export const srsService = {
   async getOrCreateCard(tenantId: string, userId: string, questionId: string) {
@@ -63,17 +102,109 @@ export const srsService = {
     return card;
   },
 
-  async getDueCards(tenantId: string, userId: string, limit = 50) {
-    return prisma.srsCard.findMany({
-      where: {
-        ...tenantScope(tenantId),
-        userId,
-        nextReviewAt: { lte: new Date() },
+  async getDueCards(
+    tenantId: string,
+    userId: string,
+    limit = 50,
+    options?: { deckId?: string }
+  ): Promise<DueCard[]> {
+    const now = new Date();
+
+    const [legacyCards, customStates] = await Promise.all([
+      options?.deckId
+        ? [] // deck filter: only custom cards from that deck
+        : prisma.srsCard.findMany({
+            where: {
+              ...tenantScope(tenantId),
+              userId,
+              nextReviewAt: { lte: now },
+            },
+            orderBy: { nextReviewAt: "asc" },
+            take: limit,
+            include: { question: true },
+          }),
+      prisma.flashcardCardSrsState.findMany({
+        where: {
+          ...tenantScope(tenantId),
+          userId,
+          nextReviewAt: { lte: now },
+          ...(options?.deckId && { card: { deckId: options.deckId } }),
+        },
+        orderBy: { nextReviewAt: "asc" },
+        take: limit,
+        include: {
+          card: { include: { deck: { select: { id: true, name: true } } } },
+        },
+      }),
+    ]);
+
+    const examItems: DueCardExam[] = legacyCards.map((c) => ({
+      cardType: "exam",
+      id: c.id,
+      questionId: c.questionId,
+      question: {
+        id: c.question.id,
+        stem: c.question.stem,
+        options: (c.question.options as unknown[]) ?? [],
+        explanation: c.question.explanation,
       },
-      orderBy: { nextReviewAt: "asc" },
-      take: limit,
-      include: { question: true },
-    });
+      nextReviewAt: c.nextReviewAt.toISOString(),
+    }));
+
+    let customItems: DueCardCustom[] = customStates.map((s) => ({
+      cardType: "custom" as const,
+      id: s.id,
+      cardId: s.cardId,
+      front: s.card.front,
+      back: s.card.back,
+      deckId: s.card.deck.id,
+      deckName: s.card.deck.name,
+      nextReviewAt: s.nextReviewAt.toISOString(),
+    }));
+
+    if (customItems.length > 0) {
+      const [tenantParams, studentParams] = await Promise.all([
+        prisma.fsrsParams.findFirst({
+          where: { tenantId, userId: null },
+        }),
+        prisma.fsrsParams.findUnique({
+          where: { tenantId_userId: { tenantId, userId } },
+        }),
+      ]);
+      const { defaultFsrsW } = await import("@/lib/fsrs");
+      const w = (studentParams ?? tenantParams)?.w ?? defaultFsrsW();
+      const baseRTarget = resolveRetentionTarget({
+        deckRetentionTarget: null,
+        studentRetentionTarget: studentParams?.retentionTarget ?? null,
+        tenantRetentionTarget: tenantParams?.retentionTarget ?? null,
+      });
+      customItems = customItems.map((item, i) => {
+        const state = customStates[i];
+        if (!state) return item;
+        const lastReviewAt = state.lastReviewAt ?? now;
+        const elapsedDays = Math.max(
+          0,
+          Math.floor((now.getTime() - lastReviewAt.getTime()) / (24 * 60 * 60 * 1000))
+        );
+        const input: FsrsStateInput = {
+          state: state.state as FsrsStateInput["state"],
+          stability: state.stability,
+          difficulty: state.difficulty,
+          elapsedDays,
+          scheduledDays: state.scheduledDays,
+          reps: state.reps,
+          lapses: state.lapses,
+          lastReviewAt: state.lastReviewAt,
+        };
+        const preview = intervalPreview(input, baseRTarget, w, now);
+        return { ...item, intervalPreview: preview };
+      });
+    }
+
+    const merged = [...examItems, ...customItems].sort(
+      (a, b) => new Date(a.nextReviewAt).getTime() - new Date(b.nextReviewAt).getTime()
+    );
+    return merged.slice(0, limit);
   },
 
   async gradeCard(input: GradeCardInput) {
@@ -108,6 +239,136 @@ export const srsService = {
     });
   },
 
+  async gradeCardUnified(
+    input: GradeCardUnifiedInput
+  ): Promise<{ scheduledDays: number; nextReviewAt: string }> {
+    if (input.cardType === "exam") {
+      const card = await prisma.srsCard.findFirst({
+        where: {
+          id: input.id,
+          userId: input.userId,
+          ...tenantScope(input.tenantId),
+        },
+      });
+      if (!card) throw new Error("SRS card not found");
+      const quality = gradeToQuality(input.grade);
+      const { interval, easeFactor } = sm2(
+        quality,
+        card.repetitions,
+        card.easeFactor,
+        card.interval
+      );
+      const nextReviewAt = new Date();
+      nextReviewAt.setDate(nextReviewAt.getDate() + interval);
+      await prisma.srsCard.update({
+        where: { id: card.id },
+        data: {
+          easeFactor,
+          interval,
+          repetitions: quality >= 3 ? card.repetitions + 1 : 0,
+          nextReviewAt,
+          lastReviewedAt: new Date(),
+        },
+      });
+      return {
+        scheduledDays: interval,
+        nextReviewAt: nextReviewAt.toISOString(),
+      };
+    }
+
+    const state = await prisma.flashcardCardSrsState.findFirst({
+      where: {
+        id: input.id,
+        userId: input.userId,
+        ...tenantScope(input.tenantId),
+      },
+      include: {
+        card: { include: { deck: true } },
+      },
+    });
+    if (!state) throw new Error("Flashcard state not found");
+
+    const [tenantParams, studentParams] = await Promise.all([
+      prisma.fsrsParams.findFirst({
+        where: { tenantId: input.tenantId, userId: null },
+      }),
+      prisma.fsrsParams.findUnique({
+        where: { tenantId_userId: { tenantId: input.tenantId, userId: input.userId } },
+      }),
+    ]);
+    const { defaultFsrsW } = await import("@/lib/fsrs");
+    const w = (studentParams ?? tenantParams)?.w ?? defaultFsrsW();
+    const retentionTarget = resolveRetentionTarget({
+      deckRetentionTarget: state.card.deck.retentionTarget ?? null,
+      studentRetentionTarget: studentParams?.retentionTarget ?? null,
+      tenantRetentionTarget: tenantParams?.retentionTarget ?? null,
+    });
+
+    const now = new Date();
+    const lastReviewAt = state.lastReviewAt ?? now;
+    const elapsedDays = Math.max(
+      0,
+      Math.floor((now.getTime() - lastReviewAt.getTime()) / (24 * 60 * 60 * 1000))
+    );
+    const fsrsInput: FsrsStateInput = {
+      state: state.state as FsrsStateInput["state"],
+      stability: state.stability,
+      difficulty: state.difficulty,
+      elapsedDays,
+      scheduledDays: state.scheduledDays,
+      reps: state.reps,
+      lapses: state.lapses,
+      lastReviewAt: state.lastReviewAt,
+    };
+    const { output, logSnapshot } = schedule(
+      fsrsInput,
+      input.grade,
+      elapsedDays,
+      retentionTarget,
+      w,
+      now
+    );
+
+    await prisma.$transaction([
+      prisma.flashcardCardSrsState.update({
+        where: { id: state.id },
+        data: {
+          state: output.state,
+          stability: output.stability,
+          difficulty: output.difficulty,
+          elapsedDays: output.elapsedDays,
+          scheduledDays: output.scheduledDays,
+          reps: output.reps,
+          lapses: output.lapses,
+          nextReviewAt: output.nextReviewAt,
+          lastReviewAt: output.lastReviewAt,
+        },
+      }),
+      prisma.flashcardReviewLog.create({
+        data: {
+          tenantId: input.tenantId,
+          userId: input.userId,
+          cardId: state.cardId,
+          deckId: state.card.deckId,
+          grade: input.grade,
+          state: logSnapshot.state,
+          stabilityBefore: logSnapshot.stabilityBefore,
+          stabilityAfter: logSnapshot.stabilityAfter,
+          difficultyBefore: logSnapshot.difficultyBefore,
+          difficultyAfter: logSnapshot.difficultyAfter,
+          retrievability: logSnapshot.retrievability,
+          elapsedDays: logSnapshot.elapsedDays,
+          scheduledDays: logSnapshot.scheduledDays,
+        },
+      }),
+    ]);
+
+    return {
+      scheduledDays: output.nextIntervalDays,
+      nextReviewAt: output.nextReviewAt.toISOString(),
+    };
+  },
+
   async listCards(tenantId: string, userId: string, page = 1, pageSize = 20) {
     const where = { ...tenantScope(tenantId), userId };
     const [items, total] = await Promise.all([
@@ -123,7 +384,7 @@ export const srsService = {
     return { items, total, page, pageSize };
   },
 
-  async getSummary(tenantId: string, userId: string) {
+  async getSummary(tenantId: string, userId: string, deckId?: string) {
     const now = new Date();
     const endOfToday = new Date(now);
     endOfToday.setUTCHours(23, 59, 59, 999);
@@ -132,19 +393,64 @@ export const srsService = {
     const endOfTomorrow = new Date(startOfTomorrow);
     endOfTomorrow.setUTCHours(23, 59, 59, 999);
 
-    const where = { ...tenantScope(tenantId), userId };
-    const [dueToday, dueTomorrow, total] = await Promise.all([
+    const legacyWhere = { ...tenantScope(tenantId), userId };
+    const customWhere = {
+      ...tenantScope(tenantId),
+      userId,
+      ...(deckId && { card: { deckId } }),
+    };
+
+    const [
+      legacyDueToday,
+      legacyDueTomorrow,
+      legacyTotal,
+      customDueToday,
+      customDueTomorrow,
+      customTotal,
+      byState,
+    ] = await Promise.all([
       prisma.srsCard.count({
-        where: { ...where, nextReviewAt: { lte: endOfToday } },
+        where: { ...legacyWhere, nextReviewAt: { lte: endOfToday } },
       }),
       prisma.srsCard.count({
         where: {
-          ...where,
+          ...legacyWhere,
           nextReviewAt: { gte: startOfTomorrow, lte: endOfTomorrow },
         },
       }),
-      prisma.srsCard.count({ where }),
+      prisma.srsCard.count({ where: legacyWhere }),
+      prisma.flashcardCardSrsState.count({
+        where: { ...customWhere, nextReviewAt: { lte: endOfToday } },
+      }),
+      prisma.flashcardCardSrsState.count({
+        where: {
+          ...customWhere,
+          nextReviewAt: { gte: startOfTomorrow, lte: endOfTomorrow },
+        },
+      }),
+      prisma.flashcardCardSrsState.count({ where: customWhere }),
+      prisma.flashcardCardSrsState.groupBy({
+        by: ["state"],
+        where: customWhere,
+        _count: true,
+      }),
     ]);
-    return { dueToday, dueTomorrow, total };
+
+    const dueToday = legacyDueToday + customDueToday;
+    const dueTomorrow = legacyDueTomorrow + customDueTomorrow;
+    const total = legacyTotal + customTotal;
+    const byStateMap: Record<string, number> = {};
+    for (const row of byState) {
+      byStateMap[row.state] = row._count;
+    }
+
+    return {
+      dueToday,
+      dueTomorrow,
+      total,
+      customDueToday,
+      customTotal,
+      byState: byStateMap,
+    };
   },
 };

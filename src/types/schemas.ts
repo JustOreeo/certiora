@@ -48,6 +48,12 @@ export const gradeCardSchema = z.object({
   quality: z.number().int().min(0).max(5),
 });
 
+export const gradeCardUnifiedSchema = z.object({
+  cardType: z.enum(["exam", "custom"]),
+  id: z.string().min(1),
+  grade: z.number().int().min(1).max(4),
+});
+
 // ——— Flashcard decks & cards ———
 
 export const createDeckSchema = z.object({
