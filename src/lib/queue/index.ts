@@ -14,6 +14,55 @@ export const JOB_NAMES = {
 // FSRS parameter optimization (Phase 8)
 export const FSRS_OPTIMIZE_JOB = "fsrs-optimize" as const;
 
+// Admin-seeded deck fan-out (Phase 9)
+export const ADMIN_DECK_FANOUT_JOB = "admin-deck-fanout" as const;
+export const ADMIN_DECK_ONBOARD_JOB = "admin-deck-onboard" as const;
+
+export type AdminDeckFanoutPayload = {
+  tenantId: string;
+  deckId: string;
+  mode: "publish" | "reactivate";
+};
+
+export type AdminDeckOnboardPayload = { tenantId: string; userId: string };
+
+export const adminDeckQueue =
+  connection &&
+  new Queue("admin-deck", {
+    ...connection,
+    defaultJobOptions: { attempts: 3, backoff: { type: "exponential", delay: 2000 } },
+  });
+
+export function addAdminDeckFanoutJob(payload: AdminDeckFanoutPayload) {
+  if (!adminDeckQueue) return Promise.resolve(undefined);
+  return adminDeckQueue.add(ADMIN_DECK_FANOUT_JOB, payload);
+}
+
+export function addAdminDeckOnboardJob(payload: AdminDeckOnboardPayload) {
+  if (!adminDeckQueue) return Promise.resolve(undefined);
+  return adminDeckQueue.add(ADMIN_DECK_ONBOARD_JOB, payload);
+}
+
+export function createAdminDeckWorker(
+  processors: {
+    [ADMIN_DECK_FANOUT_JOB]: (job: Job<AdminDeckFanoutPayload>) => Promise<void>;
+    [ADMIN_DECK_ONBOARD_JOB]: (job: Job<AdminDeckOnboardPayload>) => Promise<void>;
+  }
+): Worker | null {
+  if (!connection) return null;
+  return new Worker(
+    "admin-deck",
+    async (job: Job<AdminDeckFanoutPayload | AdminDeckOnboardPayload>) => {
+      if (job.name === ADMIN_DECK_FANOUT_JOB) {
+        await processors[ADMIN_DECK_FANOUT_JOB](job as Job<AdminDeckFanoutPayload>);
+      } else if (job.name === ADMIN_DECK_ONBOARD_JOB) {
+        await processors[ADMIN_DECK_ONBOARD_JOB](job as Job<AdminDeckOnboardPayload>);
+      }
+    },
+    connection
+  );
+}
+
 export const ingestionQueue =
   connection &&
   new Queue("ingestion", {

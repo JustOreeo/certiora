@@ -4,7 +4,7 @@ import { CardState } from "@prisma/client";
 import { randomBytes } from "crypto";
 import { rNow, defaultFsrsW } from "@/lib/fsrs";
 import type { FsrsStateInput } from "@/lib/fsrs";
-import { addFsrsOptimizeJob } from "@/lib/queue";
+import { addFsrsOptimizeJob, addAdminDeckFanoutJob } from "@/lib/queue";
 
 const SHARE_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no ambiguous 0/O, 1/I
 const SHARE_CODE_LENGTH = 8;
@@ -1064,5 +1064,264 @@ export const flashcardService = {
       orderBy: { name: "asc" },
     });
     return decks;
+  },
+};
+
+// ——— Admin-seeded decks (Phase 9) ———
+
+/** Admin decks: sourceDeckId null and source ADMIN_SEEDED (and status set). */
+function adminDeckScope(tenantId: string) {
+  return {
+    ...tenantScope(tenantId),
+    sourceDeckId: null,
+    source: "ADMIN_SEEDED" as const,
+  };
+}
+
+export type AdminCreateDeckInput = { name: string; description?: string | null };
+export type AdminUpdateDeckInput = {
+  name?: string;
+  description?: string | null;
+  suggestedRetentionTarget?: number | null;
+};
+
+export const adminFlashcardService = {
+  async listDecks(tenantId: string) {
+    const decks = await prisma.flashcardDeck.findMany({
+      where: adminDeckScope(tenantId),
+      include: { _count: { select: { cards: true } } },
+      orderBy: { updatedAt: "desc" },
+    });
+    const studentCounts = await Promise.all(
+      decks.map((d) =>
+        prisma.flashcardDeck.count({
+          where: { ...tenantScope(tenantId), sourceDeckId: d.id },
+        })
+      )
+    );
+    return decks.map((d, i) => ({
+      id: d.id,
+      name: d.name,
+      description: d.description,
+      status: d.status,
+      version: d.version,
+      suggestedRetentionTarget: d.suggestedRetentionTarget,
+      cardCount: d._count.cards,
+      studentCount: studentCounts[i],
+      updatedAt: d.updatedAt,
+    }));
+  },
+
+  async createDeck(tenantId: string, userId: string, input: AdminCreateDeckInput) {
+    return prisma.flashcardDeck.create({
+      data: {
+        tenantId,
+        userId,
+        name: input.name.trim().slice(0, 100),
+        description: input.description?.trim().slice(0, 300) ?? null,
+        source: "ADMIN_SEEDED",
+        status: "DRAFT",
+        isPublic: false,
+      },
+    });
+  },
+
+  async getDeck(tenantId: string, deckId: string) {
+    const deck = await prisma.flashcardDeck.findFirst({
+      where: { id: deckId, ...adminDeckScope(tenantId) },
+      include: {
+        cards: { orderBy: { order: "asc", createdAt: "asc" } },
+        _count: { select: { cards: true } },
+      },
+    });
+    if (!deck) return null;
+    const studentsReached = await prisma.flashcardDeck.count({
+      where: { ...tenantScope(tenantId), sourceDeckId: deckId },
+    });
+    const pendingUpdate = await prisma.flashcardDeck.count({
+      where: {
+        ...tenantScope(tenantId),
+        sourceDeckId: deckId,
+        importedAtVersion: { lt: deck.version },
+      },
+    });
+    const { _count, ...rest } = deck;
+    return {
+      ...rest,
+      cardCount: _count.cards,
+      studentsReached,
+      pendingUpdate,
+    };
+  },
+
+  async updateDeck(tenantId: string, deckId: string, input: AdminUpdateDeckInput) {
+    const deck = await prisma.flashcardDeck.findFirst({
+      where: { id: deckId, ...adminDeckScope(tenantId) },
+    });
+    if (!deck) return null;
+    if (deck.status === "ARCHIVED") return "ARCHIVED";
+    const data: Parameters<typeof prisma.flashcardDeck.update>[0]["data"] = {
+      ...(input.name !== undefined && { name: input.name.trim().slice(0, 100) }),
+      ...(input.description !== undefined && {
+        description: input.description?.trim().slice(0, 300) ?? null,
+      }),
+      ...(input.suggestedRetentionTarget !== undefined && {
+        suggestedRetentionTarget:
+          input.suggestedRetentionTarget === null
+            ? null
+            : Math.max(0.7, Math.min(0.97, input.suggestedRetentionTarget)),
+      }),
+    };
+    return prisma.flashcardDeck.update({
+      where: { id: deckId },
+      data,
+    });
+  },
+
+  async deleteDeck(tenantId: string, deckId: string) {
+    const deck = await prisma.flashcardDeck.findFirst({
+      where: { id: deckId, ...adminDeckScope(tenantId) },
+    });
+    if (!deck) return null;
+    if (deck.status !== "DRAFT") return "NOT_DRAFT";
+    await prisma.flashcardDeck.delete({ where: { id: deckId } });
+    return "deleted";
+  },
+
+  async addCard(tenantId: string, deckId: string, input: CreateCardInput) {
+    const deck = await prisma.flashcardDeck.findFirst({
+      where: { id: deckId, ...adminDeckScope(tenantId) },
+    });
+    if (!deck) return null;
+    const front = input.front.trim();
+    const back = input.back.trim();
+    if (!front || !back) return "validation";
+    const maxOrder = await prisma.flashcardCard
+      .aggregate({ where: { deckId }, _max: { order: true } })
+      .then((r) => r._max.order ?? -1);
+    const card = await prisma.flashcardCard.create({
+      data: {
+        deckId,
+        tenantId,
+        front: front.slice(0, 1000),
+        back: back.slice(0, 2000),
+        order: maxOrder + 1,
+      },
+    });
+    if (deck.status === "ACTIVE") {
+      await prisma.flashcardDeck.update({
+        where: { id: deckId },
+        data: { version: { increment: 1 } },
+      });
+    }
+    return prisma.flashcardCard.findUnique({
+      where: { id: card.id },
+    });
+  },
+
+  async updateCard(
+    tenantId: string,
+    deckId: string,
+    cardId: string,
+    input: UpdateCardInput
+  ) {
+    const deck = await prisma.flashcardDeck.findFirst({
+      where: { id: deckId, ...adminDeckScope(tenantId) },
+    });
+    if (!deck) return null;
+    const card = await prisma.flashcardCard.findFirst({
+      where: { id: cardId, deckId, ...tenantScope(tenantId) },
+    });
+    if (!card) return null;
+    const data: { front?: string; back?: string } = {};
+    if (input.front !== undefined) {
+      const front = input.front.trim();
+      if (!front) return "validation";
+      data.front = front.slice(0, 1000);
+    }
+    if (input.back !== undefined) {
+      const back = input.back.trim();
+      if (!back) return "validation";
+      data.back = back.slice(0, 2000);
+    }
+    if (Object.keys(data).length === 0) return card;
+    const updated = await prisma.flashcardCard.update({
+      where: { id: cardId },
+      data,
+    });
+    if (deck.status === "ACTIVE") {
+      await prisma.flashcardDeck.update({
+        where: { id: deckId },
+        data: { version: { increment: 1 } },
+      });
+    }
+    return updated;
+  },
+
+  async deleteCard(tenantId: string, deckId: string, cardId: string) {
+    const deck = await prisma.flashcardDeck.findFirst({
+      where: { id: deckId, ...adminDeckScope(tenantId) },
+    });
+    if (!deck) return null;
+    const card = await prisma.flashcardCard.findFirst({
+      where: { id: cardId, deckId, ...tenantScope(tenantId) },
+    });
+    if (!card) return null;
+    await prisma.flashcardCard.delete({ where: { id: cardId } });
+    if (deck.status === "ACTIVE") {
+      await prisma.flashcardDeck.update({
+        where: { id: deckId },
+        data: { version: { increment: 1 } },
+      });
+    }
+    return "deleted";
+  },
+
+  async publish(tenantId: string, deckId: string) {
+    const deck = await prisma.flashcardDeck.findFirst({
+      where: { id: deckId, ...adminDeckScope(tenantId) },
+      include: { _count: { select: { cards: true } } },
+    });
+    if (!deck) return null;
+    if (deck.status !== "DRAFT") return "NOT_DRAFT";
+    if (deck._count.cards === 0) return "NO_CARDS";
+    await prisma.flashcardDeck.update({
+      where: { id: deckId },
+      data: { status: "ACTIVE", isPublic: true },
+    });
+    addAdminDeckFanoutJob({ tenantId, deckId, mode: "publish" });
+    return prisma.flashcardDeck.findUnique({
+      where: { id: deckId },
+      include: { _count: { select: { cards: true } } },
+    });
+  },
+
+  async archive(tenantId: string, deckId: string) {
+    const deck = await prisma.flashcardDeck.findFirst({
+      where: { id: deckId, ...adminDeckScope(tenantId) },
+    });
+    if (!deck) return null;
+    if (deck.status !== "ACTIVE") return "NOT_ACTIVE";
+    return prisma.flashcardDeck.update({
+      where: { id: deckId },
+      data: { status: "ARCHIVED" },
+    });
+  },
+
+  async reactivate(tenantId: string, deckId: string) {
+    const deck = await prisma.flashcardDeck.findFirst({
+      where: { id: deckId, ...adminDeckScope(tenantId) },
+    });
+    if (!deck) return null;
+    if (deck.status !== "ARCHIVED") return "NOT_ARCHIVED";
+    await prisma.flashcardDeck.update({
+      where: { id: deckId },
+      data: { status: "ACTIVE" },
+    });
+    addAdminDeckFanoutJob({ tenantId, deckId, mode: "reactivate" });
+    return prisma.flashcardDeck.findUnique({
+      where: { id: deckId },
+      include: { _count: { select: { cards: true } } },
+    });
   },
 };

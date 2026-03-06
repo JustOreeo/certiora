@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { seedTenantFsrsParams } from "@/lib/fsrs";
+import { addAdminDeckOnboardJob } from "@/lib/queue";
 import { hash } from "bcryptjs";
 import { z } from "zod";
 
@@ -98,6 +99,15 @@ export async function POST(request: NextRequest) {
         data: { usedAt: new Date() },
       });
     });
+
+    // Fan-out ACTIVE admin-seeded decks to the new student (Phase 9).
+    const newUser = await prisma.user.findUnique({
+      where: { email: invitation.email },
+      select: { id: true },
+    });
+    if (newUser) {
+      addAdminDeckOnboardJob({ tenantId: invitation.tenantId!, userId: newUser.id });
+    }
   } else {
     return NextResponse.json({ error: "Invalid invitation role" }, { status: 400 });
   }

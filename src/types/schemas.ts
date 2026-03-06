@@ -103,3 +103,16 @@ export const importDeckSchema = z
   .refine((d) => d.shareCode ?? d.deckId, {
     message: "Either shareCode or deckId is required",
   });
+
+// ——— Admin flashcard decks (Phase 9) ———
+
+export const adminCreateDeckSchema = z.object({
+  name: z.string().min(1).max(100).transform((s) => s.trim()),
+  description: z.string().max(300).transform((s) => s.trim()).optional().nullable(),
+});
+
+export const adminUpdateDeckSchema = z.object({
+  name: z.string().min(1).max(100).transform((s) => s.trim()).optional(),
+  description: z.string().max(300).transform((s) => s.trim()).optional().nullable(),
+  suggestedRetentionTarget: z.number().min(0.7).max(0.97).optional().nullable(),
+});
