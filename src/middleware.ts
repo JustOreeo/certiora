@@ -3,6 +3,7 @@ import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
 
 const dashboardPath = /^\/([^/]+)\/(admin|exams|flashcards|analytics)/;
+const tenantRootPath = /^\/([^/]+)$/; // exactly one segment: /:tenantSlug (student home)
 const superAdminPath = /^\/super-admin/;
 
 export async function middleware(request: NextRequest) {
@@ -18,6 +19,41 @@ export async function middleware(request: NextRequest) {
     }
     if (token.role !== "SUPER_ADMIN") {
       return NextResponse.redirect(new URL("/login", request.url));
+    }
+    return NextResponse.next();
+  }
+
+  // Protect tenant root: /:tenantSlug (student home page)
+  const tenantRootMatch = pathname.match(tenantRootPath);
+  if (tenantRootMatch) {
+    const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
+    if (!token) {
+      const login = new URL("/login", request.url);
+      login.searchParams.set("callbackUrl", pathname);
+      return NextResponse.redirect(login);
+    }
+    const tenantSlug = tenantRootMatch[1];
+
+    if (token.tenantId && token.tenantSlug && token.tenantSlug !== tenantSlug) {
+      return NextResponse.redirect(new URL(`/${token.tenantSlug}`, request.url));
+    }
+
+    if (
+      token.role === "STUDENT" &&
+      token.credentialsExpiresAt &&
+      new Date(token.credentialsExpiresAt as string) < new Date()
+    ) {
+      const login = new URL("/login", request.url);
+      login.searchParams.set("error", "CredentialsExpired");
+      login.searchParams.set("callbackUrl", pathname);
+      return NextResponse.redirect(login);
+    }
+
+    if (token.tenantId) {
+      const res = NextResponse.next();
+      res.headers.set("x-tenant-id", token.tenantId as string);
+      res.headers.set("x-tenant-slug", tenantSlug);
+      return res;
     }
     return NextResponse.next();
   }
