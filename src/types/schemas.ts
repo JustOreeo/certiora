@@ -47,3 +47,41 @@ export const gradeCardSchema = z.object({
   questionId: z.string().min(1),
   quality: z.number().int().min(0).max(5),
 });
+
+// ——— Flashcard decks & cards ———
+
+export const createDeckSchema = z.object({
+  name: z.string().min(1).max(100).transform((s) => s.trim()),
+  description: z.string().max(300).transform((s) => s.trim()).optional().nullable(),
+  isPublic: z.boolean().optional(),
+});
+
+export const updateDeckSchema = z.object({
+  name: z.string().min(1).max(100).transform((s) => s.trim()).optional(),
+  description: z.string().max(300).transform((s) => s.trim()).optional().nullable(),
+  isPublic: z.boolean().optional(),
+  retentionTarget: z.number().min(0.7).max(0.97).optional().nullable(),
+});
+
+export const createCardSchema = z.object({
+  front: z.string().min(1).max(1000).transform((s) => s.trim()),
+  back: z.string().min(1).max(2000).transform((s) => s.trim()),
+});
+
+export const updateCardSchema = z
+  .object({
+    front: z.string().max(1000).transform((s) => s.trim()).optional(),
+    back: z.string().max(2000).transform((s) => s.trim()).optional(),
+  })
+  .refine((d) => d.front !== undefined || d.back !== undefined, {
+    message: "At least one of front or back required",
+  })
+  .refine(
+    (d) =>
+      (d.front === undefined || d.front.length > 0) && (d.back === undefined || d.back.length > 0),
+    { message: "Front and back cannot be empty" }
+  );
+
+export const importDeckSchema = z.object({
+  shareCode: z.string().min(1),
+});
