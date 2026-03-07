@@ -87,7 +87,11 @@ export default function FlashcardsPage() {
 
       {activeTab === "review" && (
         <div role="tabpanel" aria-labelledby="tab-review">
-          <FlashcardsReviewTab tenantSlug={tenantSlug} />
+          <FlashcardsReviewTab
+            tenantSlug={tenantSlug}
+            onNavigateToDecks={() => setActiveTab("decks")}
+            onNavigateToLibrary={() => setActiveTab("library")}
+          />
         </div>
       )}
       {activeTab === "decks" && (
@@ -97,7 +101,10 @@ export default function FlashcardsPage() {
       )}
       {activeTab === "library" && (
         <div role="tabpanel" aria-labelledby="tab-library">
-          <FlashcardsLibraryTab tenantSlug={tenantSlug} />
+          <FlashcardsLibraryTab
+            tenantSlug={tenantSlug}
+            onNavigateToDecks={() => setActiveTab("decks")}
+          />
         </div>
       )}
       {activeTab === "analytics" && (

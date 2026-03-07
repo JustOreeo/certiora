@@ -47,7 +47,13 @@ function Spinner() {
   );
 }
 
-export function FlashcardsLibraryTab({ tenantSlug }: { tenantSlug: string }) {
+export function FlashcardsLibraryTab({
+  tenantSlug,
+  onNavigateToDecks,
+}: {
+  tenantSlug: string;
+  onNavigateToDecks?: () => void;
+}) {
   const [decks, setDecks] = useState<LibraryDeckItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchInput, setSearchInput] = useState("");
@@ -143,12 +149,22 @@ export function FlashcardsLibraryTab({ tenantSlug }: { tenantSlug: string }) {
           <p className="text-sm text-secondary">
             No public decks yet. Be the first to share a deck with your batch.
           </p>
-          <Link
-            href={`/${tenantSlug}/flashcards`}
-            className="inline-flex mt-4 h-10 items-center px-5 rounded-lg text-sm font-semibold bg-primary text-inverse hover:bg-primary-hover transition-colors"
-          >
-            Create a deck
-          </Link>
+          {onNavigateToDecks ? (
+            <button
+              type="button"
+              onClick={onNavigateToDecks}
+              className="inline-flex mt-4 h-10 items-center px-5 rounded-lg text-sm font-semibold bg-primary text-inverse hover:bg-primary-hover transition-colors"
+            >
+              Create a deck
+            </button>
+          ) : (
+            <Link
+              href={`/${tenantSlug}/flashcards`}
+              className="inline-flex mt-4 h-10 items-center px-5 rounded-lg text-sm font-semibold bg-primary text-inverse hover:bg-primary-hover transition-colors"
+            >
+              Create a deck
+            </Link>
+          )}
         </div>
       )}
 

@@ -20,7 +20,8 @@ export function useFocusTrap(
   onClose: () => void,
   options?: { containerRef?: RefObject<HTMLElement | null> }
 ): RefObject<HTMLElement | null> {
-  const containerRef = options?.containerRef ?? useRef<HTMLElement>(null);
+  const innerRef = useRef<HTMLElement>(null);
+  const containerRef = options?.containerRef ?? innerRef;
   const previousActiveRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {

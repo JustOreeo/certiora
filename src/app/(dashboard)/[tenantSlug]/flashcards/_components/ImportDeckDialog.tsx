@@ -23,8 +23,6 @@ export function ImportDeckDialog({ open, onClose, onDone }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [confirmDuplicate, setConfirmDuplicate] = useState(false);
 
-  const contentRef = useFocusTrap(open, handleClose);
-
   const reset = () => {
     setShareCode("");
     setStep("input");
@@ -33,13 +31,15 @@ export function ImportDeckDialog({ open, onClose, onDone }: Props) {
     setConfirmDuplicate(false);
   };
 
-  const normalizeShareCode = (code: string) =>
-    code.trim().toUpperCase().replace(/\s/g, "");
-
   const handleClose = () => {
     reset();
     onClose();
   };
+
+  const contentRef = useFocusTrap(open, handleClose);
+
+  const normalizeShareCode = (code: string) =>
+    code.trim().toUpperCase().replace(/\s/g, "");
 
   const handlePreview = async () => {
     const code = normalizeShareCode(shareCode);

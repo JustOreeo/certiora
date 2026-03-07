@@ -62,7 +62,15 @@ function formatInterval(days: number): string {
   return `${days} days`;
 }
 
-export function FlashcardsReviewTab({ tenantSlug }: { tenantSlug: string }) {
+export function FlashcardsReviewTab({
+  tenantSlug,
+  onNavigateToDecks,
+  onNavigateToLibrary,
+}: {
+  tenantSlug: string;
+  onNavigateToDecks?: () => void;
+  onNavigateToLibrary?: () => void;
+}) {
   const [cards, setCards] = useState<DueCard[]>([]);
   const [decks, setDecks] = useState<DeckForFilter[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
@@ -345,18 +353,38 @@ export function FlashcardsReviewTab({ tenantSlug }: { tenantSlug: string }) {
             No cards due right now. Come back later or explore your decks to add more cards.
           </p>
           <div className="flex flex-wrap gap-3 justify-center">
-            <Link
-              href={`/${tenantSlug}/flashcards`}
-              className="inline-flex h-10 items-center px-5 rounded-xl text-sm font-medium border border-border bg-surface-card hover:bg-surface-base transition-colors"
-            >
-              Browse My Decks
-            </Link>
-            <Link
-              href={`/${tenantSlug}/flashcards`}
-              className="inline-flex h-10 items-center px-5 rounded-xl text-sm font-medium border border-border bg-surface-card hover:bg-surface-base transition-colors"
-            >
-              Explore Library
-            </Link>
+            {onNavigateToDecks ? (
+              <button
+                type="button"
+                onClick={onNavigateToDecks}
+                className="inline-flex h-10 items-center px-5 rounded-xl text-sm font-medium border border-border bg-surface-card hover:bg-surface-base transition-colors"
+              >
+                Browse My Decks
+              </button>
+            ) : (
+              <Link
+                href={`/${tenantSlug}/flashcards`}
+                className="inline-flex h-10 items-center px-5 rounded-xl text-sm font-medium border border-border bg-surface-card hover:bg-surface-base transition-colors"
+              >
+                Browse My Decks
+              </Link>
+            )}
+            {onNavigateToLibrary ? (
+              <button
+                type="button"
+                onClick={onNavigateToLibrary}
+                className="inline-flex h-10 items-center px-5 rounded-xl text-sm font-medium border border-border bg-surface-card hover:bg-surface-base transition-colors"
+              >
+                Explore Library
+              </button>
+            ) : (
+              <Link
+                href={`/${tenantSlug}/flashcards`}
+                className="inline-flex h-10 items-center px-5 rounded-xl text-sm font-medium border border-border bg-surface-card hover:bg-surface-base transition-colors"
+              >
+                Explore Library
+              </Link>
+            )}
           </div>
         </div>
       )}
