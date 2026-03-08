@@ -15,13 +15,13 @@ function getFocusables(container: HTMLElement): HTMLElement[] {
  * On close: restores focus to the element that was active when the trap opened.
  * WCAG 2.1: focus trap and return focus for modals/dialogs.
  */
-export function useFocusTrap(
+export function useFocusTrap<T extends HTMLElement = HTMLDivElement>(
   open: boolean,
   onClose: () => void,
-  options?: { containerRef?: RefObject<HTMLElement | null> }
-): RefObject<HTMLElement | null> {
-  const innerRef = useRef<HTMLElement>(null);
-  const containerRef = options?.containerRef ?? innerRef;
+  options?: { containerRef?: RefObject<T> }
+): RefObject<T> {
+  const innerRef = useRef<T>(null as unknown as T);
+  const containerRef = (options?.containerRef ?? innerRef) as RefObject<T>;
   const previousActiveRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
