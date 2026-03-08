@@ -1,4 +1,4 @@
-import type { IngestionJobType, IngestionJobStatus } from "@prisma/client";
+import type { IngestionJobType, IngestionJobStatus, Prisma } from "@prisma/client";
 import { prisma, tenantScope } from "@/lib/db";
 import { addChunkPdfJob, addGenerateQuestionsJob } from "@/lib/queue";
 import { sourceMaterialService } from "@/services/source-material";
@@ -52,7 +52,7 @@ export const ingestionService = {
     jobType: IngestionJobType,
     payloadKey?: string
   ) {
-    const where: Parameters<typeof prisma.ingestionJob.findFirst>[0]["where"] = {
+    const where: Prisma.IngestionJobWhereInput = {
       ...tenantScope(tenantId),
       sourceMaterialId,
       jobType,

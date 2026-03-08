@@ -1,4 +1,4 @@
-import type { QuestionStatus, Prisma } from "@prisma/client";
+import type { QuestionStatus, QuestionDifficulty, Prisma } from "@prisma/client";
 import { prisma, tenantScope } from "@/lib/db";
 import type { McqOption } from "@/types";
 
@@ -7,7 +7,7 @@ export type QuestionCreateInput = {
   subjectId: string;
   topicId: string;
   subtopicId?: string;
-  difficulty: Prisma.EnumQuestionDifficultyArg;
+  difficulty: QuestionDifficulty;
   stem: string;
   options: McqOption[];
   explanation?: string;
@@ -20,7 +20,7 @@ export type QuestionCreateInput = {
 export type QuestionFilter = {
   subjectId?: string;
   topicId?: string;
-  difficulty?: Prisma.EnumQuestionDifficultyArg;
+  difficulty?: QuestionDifficulty;
   status?: QuestionStatus;
   page?: number;
   pageSize?: number;
@@ -166,7 +166,7 @@ export const questionBankService = {
       stem: string;
       options: McqOption[];
       explanation?: string;
-      difficulty: Prisma.EnumQuestionDifficultyArg;
+      difficulty: QuestionDifficulty;
       subjectId: string;
       topicId: string;
       subtopicId?: string;
@@ -234,7 +234,7 @@ export const questionBankService = {
   async drawRandom(
     tenantId: string,
     count: number,
-    filters?: { subjectId?: string; topicId?: string; difficulty?: Prisma.EnumQuestionDifficultyArg }
+    filters?: { subjectId?: string; topicId?: string; difficulty?: QuestionDifficulty }
   ) {
     const where: Prisma.QuestionWhereInput = { ...tenantScope(tenantId), status: "APPROVED" };
     if (filters?.subjectId) where.subjectId = filters.subjectId;

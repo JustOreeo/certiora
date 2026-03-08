@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { prisma, tenantScope } from "@/lib/db";
 
 export type TenantCreateInput = {
@@ -40,7 +41,7 @@ export const tenantService = {
         logoUrl: data.logoUrl,
         primaryColor: data.primaryColor,
         customDomain: data.customDomain,
-        settings: data.settings ?? undefined,
+        settings: data.settings as Prisma.InputJsonValue ?? undefined,
       },
     });
   },
@@ -53,7 +54,7 @@ export const tenantService = {
         logoUrl: data.logoUrl,
         primaryColor: data.primaryColor,
         customDomain: data.customDomain,
-        settings: data.settings,
+        settings: data.settings as Prisma.InputJsonValue | undefined,
       },
     });
   },
