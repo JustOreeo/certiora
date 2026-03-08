@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { z } from "zod";
+import { randomBytes } from "crypto";
 
 const schema = z.object({
   email: z.string().email("Valid email required"),
@@ -67,6 +68,7 @@ export async function POST(
 
   const invitation = await prisma.invitation.create({
     data: {
+      token: randomBytes(32).toString("hex"),
       email,
       role: "STUDENT",
       tenantId: tenant.id,

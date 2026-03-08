@@ -50,10 +50,7 @@ export async function middleware(request: NextRequest) {
     }
 
     if (token.tenantId) {
-      const res = NextResponse.next();
-      res.headers.set("x-tenant-id", token.tenantId as string);
-      res.headers.set("x-tenant-slug", tenantSlug);
-      return res;
+      return NextResponse.next();
     }
     return NextResponse.next();
   }
@@ -87,12 +84,6 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(login);
     }
 
-    if (token.tenantId) {
-      const res = NextResponse.next();
-      res.headers.set("x-tenant-id", token.tenantId as string);
-      res.headers.set("x-tenant-slug", tenantSlug);
-      return res;
-    }
     return NextResponse.next();
   }
 

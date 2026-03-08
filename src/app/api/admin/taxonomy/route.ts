@@ -8,6 +8,9 @@ export async function GET(request: NextRequest) {
   if (!session?.tenantId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  if (session.role !== "ADMIN" && session.role !== "INSTRUCTOR") {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
 
   const taxonomy = await questionBankService.listTaxonomy(session.tenantId);
   return NextResponse.json(taxonomy);

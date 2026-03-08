@@ -4,6 +4,7 @@ import { seedTenantFsrsParams } from "@/lib/fsrs";
 import { addAdminDeckOnboardJob } from "@/lib/queue";
 import { hash } from "bcryptjs";
 import { z } from "zod";
+import { invitationRatelimit } from "@/lib/ratelimit";
 
 const schema = z.object({
   token: z.string().min(1),
@@ -12,6 +13,14 @@ const schema = z.object({
 });
 
 export async function POST(request: NextRequest) {
+  if (invitationRatelimit) {
+    const ip = request.headers.get("x-forwarded-for") ?? "anonymous";
+    const { success } = await invitationRatelimit.limit(ip);
+    if (!success) {
+      return NextResponse.json({ error: "Too many requests. Please try again later." }, { status: 429 });
+    }
+  }
+
   const body = await request.json();
   const parsed = schema.safeParse(body);
   if (!parsed.success) {

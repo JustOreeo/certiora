@@ -4,12 +4,13 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { hash } from "bcryptjs";
 import Papa from "papaparse";
+import { randomInt } from "crypto";
 
 function generatePassword(length = 8): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
   let password = "";
   for (let i = 0; i < length; i++) {
-    password += chars.charAt(Math.floor(Math.random() * chars.length));
+    password += chars.charAt(randomInt(chars.length));
   }
   return password;
 }

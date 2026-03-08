@@ -32,6 +32,11 @@ async function seedSuperAdmin() {
 }
 
 async function seedTestTenants() {
+  if (process.env.NODE_ENV !== "development") {
+    console.log("Skipping test tenant seeding in non-development environment");
+    return;
+  }
+
   const adminPassword = await hash("Admin123!", 10);
   const studentPassword = await hash("Student123!", 10);
 

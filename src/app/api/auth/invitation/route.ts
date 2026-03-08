@@ -1,7 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { invitationRatelimit } from "@/lib/ratelimit";
 
 export async function GET(request: NextRequest) {
+  if (invitationRatelimit) {
+    const ip = request.headers.get("x-forwarded-for") ?? "anonymous";
+    const { success } = await invitationRatelimit.limit(ip);
+    if (!success) {
+      return NextResponse.json({ error: "Too many requests. Please try again later." }, { status: 429 });
+    }
+  }
+
   const token = request.nextUrl.searchParams.get("token");
   if (!token) {
     return NextResponse.json({ error: "Token is required" }, { status: 400 });

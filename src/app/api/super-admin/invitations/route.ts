@@ -4,6 +4,7 @@ import type { Session } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { z } from "zod";
+import { randomBytes } from "crypto";
 
 function requireSuperAdmin(session: Session | null) {
   if (!session || session.role !== "SUPER_ADMIN") {
@@ -85,6 +86,7 @@ export async function POST(request: NextRequest) {
 
   const invitation = await prisma.invitation.create({
     data: {
+      token: randomBytes(32).toString("hex"),
       email,
       role: "ADMIN",
       tenantName,
