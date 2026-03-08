@@ -47,3 +47,72 @@ export const gradeCardSchema = z.object({
   questionId: z.string().min(1),
   quality: z.number().int().min(0).max(5),
 });
+
+export const gradeCardUnifiedSchema = z.object({
+  cardType: z.enum(["exam", "custom"]),
+  id: z.string().min(1),
+  grade: z.number().int().min(1).max(4),
+});
+
+// ——— Flashcard decks & cards ———
+
+export const createDeckSchema = z.object({
+  name: z.string().min(1).max(100).transform((s) => s.trim()),
+  description: z.string().max(300).transform((s) => s.trim()).optional().nullable(),
+  isPublic: z.boolean().optional(),
+});
+
+export const updateDeckSchema = z.object({
+  name: z.string().min(1).max(100).transform((s) => s.trim()).optional(),
+  description: z.string().max(300).transform((s) => s.trim()).optional().nullable(),
+  isPublic: z.boolean().optional(),
+  retentionTarget: z.number().min(0.7).max(0.97).optional().nullable(),
+});
+
+export const patchSettingsSchema = z.object({
+  retentionTarget: z.number().min(0.7).max(0.97),
+});
+
+export const createCardSchema = z.object({
+  front: z.string().min(1).max(1000).transform((s) => s.trim()),
+  back: z.string().min(1).max(2000).transform((s) => s.trim()),
+});
+
+export const updateCardSchema = z
+  .object({
+    front: z.string().max(1000).transform((s) => s.trim()).optional(),
+    back: z.string().max(2000).transform((s) => s.trim()).optional(),
+  })
+  .refine((d) => d.front !== undefined || d.back !== undefined, {
+    message: "At least one of front or back required",
+  })
+  .refine(
+    (d) =>
+      (d.front === undefined || d.front.length > 0) && (d.back === undefined || d.back.length > 0),
+    { message: "Front and back cannot be empty" }
+  );
+
+export const importDeckSchema = z
+  .object({
+    shareCode: z.string().min(1).optional(),
+    deckId: z.string().min(1).optional(),
+  })
+  .refine((d) => (d.shareCode ? !d.deckId : !!d.deckId), {
+    message: "Provide either shareCode or deckId, not both",
+  })
+  .refine((d) => d.shareCode ?? d.deckId, {
+    message: "Either shareCode or deckId is required",
+  });
+
+// ——— Admin flashcard decks (Phase 9) ———
+
+export const adminCreateDeckSchema = z.object({
+  name: z.string().min(1).max(100).transform((s) => s.trim()),
+  description: z.string().max(300).transform((s) => s.trim()).optional().nullable(),
+});
+
+export const adminUpdateDeckSchema = z.object({
+  name: z.string().min(1).max(100).transform((s) => s.trim()).optional(),
+  description: z.string().max(300).transform((s) => s.trim()).optional().nullable(),
+  suggestedRetentionTarget: z.number().min(0.7).max(0.97).optional().nullable(),
+});

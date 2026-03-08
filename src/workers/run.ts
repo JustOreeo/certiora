@@ -1,22 +1,51 @@
 /**
- * Run ingestion workers (chunk-pdf, generate-questions).
+ * Run ingestion workers (chunk-pdf, generate-questions), FSRS optimize worker, and admin deck fan-out worker.
  * Execute in a separate process: npm run worker
  * Requires REDIS_URL and DATABASE_URL.
  */
-import { createIngestionWorker } from "@/lib/queue";
+import {
+  createIngestionWorker,
+  createFsrsOptimizeWorker,
+  createAdminDeckWorker,
+  ADMIN_DECK_FANOUT_JOB,
+  ADMIN_DECK_ONBOARD_JOB,
+} from "@/lib/queue";
 import { handleChunkPdf } from "@/workers/chunk-pdf/handler";
 import { handleGenerateQuestions } from "@/workers/generate-questions/handler";
+import { handleFsrsOptimize } from "@/workers/fsrs-optimize/handler";
+import {
+  handleAdminDeckFanout,
+  handleAdminDeckOnboard,
+} from "@/workers/admin-deck-fanout/handler";
 
-const worker = createIngestionWorker({
+const ingestionWorker = createIngestionWorker({
   "chunk-pdf": handleChunkPdf,
   "generate-questions": handleGenerateQuestions,
 });
 
-if (worker) {
-  worker.on("completed", (job) => console.log(`Job ${job.id} completed`));
-  worker.on("failed", (job, err) => console.error(`Job ${job?.id} failed`, err));
+const fsrsOptimizeWorker = createFsrsOptimizeWorker(handleFsrsOptimize);
+
+const adminDeckWorker = createAdminDeckWorker({
+  [ADMIN_DECK_FANOUT_JOB]: handleAdminDeckFanout,
+  [ADMIN_DECK_ONBOARD_JOB]: handleAdminDeckOnboard,
+});
+
+if (ingestionWorker) {
+  ingestionWorker.on("completed", (job) => console.log(`Ingestion job ${job.id} completed`));
+  ingestionWorker.on("failed", (job, err) => console.error(`Ingestion job ${job?.id} failed`, err));
   console.log("Ingestion worker running.");
-} else {
+}
+if (fsrsOptimizeWorker) {
+  fsrsOptimizeWorker.on("completed", (job) => console.log(`FSRS optimize job ${job.id} completed`));
+  fsrsOptimizeWorker.on("failed", (job, err) => console.error(`FSRS optimize job ${job?.id} failed`, err));
+  console.log("FSRS optimize worker running.");
+}
+if (adminDeckWorker) {
+  adminDeckWorker.on("completed", (job) => console.log(`Admin deck job ${job.id} completed`));
+  adminDeckWorker.on("failed", (job, err) => console.error(`Admin deck job ${job?.id} failed`, err));
+  console.log("Admin deck worker running.");
+}
+if (!ingestionWorker && !fsrsOptimizeWorker && !adminDeckWorker) {
   console.error("Redis not configured. Set REDIS_URL to run workers.");
   process.exit(1);
 }

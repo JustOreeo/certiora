@@ -1,8 +1,11 @@
 import type { ExamType } from "@prisma/client";
+import { CardState } from "@prisma/client";
 import { prisma, tenantScope } from "@/lib/db";
 import { questionBankService } from "@/services/question-bank";
 import { srsService } from "@/services/srs";
 import { EXAM_TYPE_QUESTION_COUNTS, EXAM_TYPE_TIME_LIMIT_MINUTES } from "@/config/constants";
+
+const EXAM_MISTAKES_DECK_NAME = "Exam Mistakes";
 
 export type StartExamInput = {
   tenantId: string;
@@ -185,10 +188,77 @@ export const examEngineService = {
       },
     });
 
-    // Seed SRS deck from wrong answers (idempotent: getOrCreateCard)
+    // Legacy: keep seeding SrsCard for backward compatibility
     const wrongAnswers = attempt.answers.filter((a) => !a.isCorrect);
     for (const a of wrongAnswers) {
       await srsService.getOrCreateCard(tenantId, userId, a.questionId);
+    }
+
+    // Exam Mistakes deck (FlashcardCard + FlashcardCardSrsState) — idempotent per question
+    let examDeck = await prisma.flashcardDeck.findFirst({
+      where: {
+        ...tenantScope(tenantId),
+        userId,
+        source: "EXAM_GENERATED",
+      },
+    });
+    if (!examDeck) {
+      examDeck = await prisma.flashcardDeck.create({
+        data: {
+          tenantId,
+          userId,
+          name: EXAM_MISTAKES_DECK_NAME,
+          source: "EXAM_GENERATED",
+          isPublic: false,
+        },
+      });
+    }
+
+    const now = new Date();
+    for (const a of wrongAnswers) {
+      const question = await prisma.question.findFirst({
+        where: { id: a.questionId, ...tenantScope(tenantId) },
+      });
+      if (!question) continue;
+
+      const options = question.options as Array<{ id: string; text: string; isCorrect?: boolean }> | null;
+      const correctOption = options?.find((o) => o.isCorrect);
+      const backText = (question.explanation?.trim() || correctOption?.text || "Correct answer not stored").slice(0, 2000);
+      const frontText = question.stem.slice(0, 1000);
+
+      let card = await prisma.flashcardCard.findFirst({
+        where: { deckId: examDeck.id, questionId: question.id },
+      });
+      if (!card) {
+        const maxOrder = await prisma.flashcardCard
+          .aggregate({ where: { deckId: examDeck.id }, _max: { order: true } })
+          .then((r) => r._max.order ?? -1);
+        card = await prisma.flashcardCard.create({
+          data: {
+            deckId: examDeck.id,
+            tenantId,
+            questionId: question.id,
+            front: frontText,
+            back: backText,
+            order: maxOrder + 1,
+          },
+        });
+      }
+
+      const existingState = await prisma.flashcardCardSrsState.findUnique({
+        where: { userId_cardId: { userId, cardId: card.id } },
+      });
+      if (!existingState) {
+        await prisma.flashcardCardSrsState.create({
+          data: {
+            tenantId,
+            userId,
+            cardId: card.id,
+            state: CardState.NEW,
+            nextReviewAt: now,
+          },
+        });
+      }
     }
 
     return this.getAttempt(tenantId, attemptId, userId);

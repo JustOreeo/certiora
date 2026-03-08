@@ -96,6 +96,7 @@ export default function StudentNav({
     pathname === `${slugSegment}/exams` ||
     pathname.startsWith(`${slugSegment}/exams/`) ||
     pathname === `${slugSegment}/flashcards` ||
+    pathname.startsWith(`${slugSegment}/flashcards/`) ||
     pathname === `${slugSegment}/analytics`;
 
   const isActiveExam =

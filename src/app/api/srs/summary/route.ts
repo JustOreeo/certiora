@@ -1,18 +1,21 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { srsService } from "@/services/srs";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session?.tenantId || !session.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const deckId = request.nextUrl.searchParams.get("deckId") ?? undefined;
+
   try {
     const summary = await srsService.getSummary(
       session.tenantId,
-      session.user.id
+      session.user.id,
+      deckId
     );
     return NextResponse.json(summary);
   } catch (error) {

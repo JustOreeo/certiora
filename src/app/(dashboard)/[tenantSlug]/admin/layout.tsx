@@ -81,6 +81,17 @@ function IconPalette() {
   );
 }
 
+function IconFlashcards() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="4" width="20" height="16" rx="2" />
+      <path d="M2 10h20" />
+      <path d="M8 4v16" />
+      <path d="M16 4v16" />
+    </svg>
+  );
+}
+
 function IconLogOut() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
@@ -143,6 +154,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     { href: `/${tenantSlug}/admin`, label: "Overview", icon: <IconGrid />, exact: true },
     { href: `/${tenantSlug}/admin/taxonomy`, label: "Taxonomy", icon: <IconTag /> },
     { href: `/${tenantSlug}/admin/questions`, label: "Questions", icon: <IconFileText /> },
+    { href: `/${tenantSlug}/admin/flashcard-decks`, label: "Flashcard Decks", icon: <IconFlashcards /> },
     { href: `/${tenantSlug}/admin/students`, label: "Students", icon: <IconUsers /> },
     { href: `/${tenantSlug}/admin/analytics`, label: "Analytics", icon: <IconBarChart /> },
     { href: `/${tenantSlug}/admin/source-materials`, label: "Source Materials", icon: <IconBookOpen /> },

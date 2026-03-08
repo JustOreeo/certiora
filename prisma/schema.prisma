@@ -65,6 +65,28 @@ enum ExamAttemptStatus {
   SUBMITTED
 }
 
+// ——— Flashcard / FSRS ———
+
+enum DeckSource {
+  PERSONAL
+  SHARED
+  ADMIN_SEEDED
+  EXAM_GENERATED
+}
+
+enum DeckStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+enum CardState {
+  NEW
+  LEARNING
+  REVIEW
+  RELEARNING
+}
+
 // ——— Tenancy and users ———
 
 model Tenant {
@@ -78,19 +100,24 @@ model Tenant {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  users            User[]
-  subjects         Subject[]
-  questions        Question[]
-  sourceMaterials  SourceMaterial[]
-  ingestionJobs    IngestionJob[]
-  examDefinitions  ExamDefinition[]
-  examAttempts     ExamAttempt[]
-  srsCards         SrsCard[]
-  topicPerformance TopicPerformanceSnapshot[]
-  Topic            Topic[]
-  Subtopic         Subtopic[]
-  SourceChunk      SourceChunk[]
-  invitations      Invitation[]
+  users              User[]
+  subjects           Subject[]
+  questions          Question[]
+  sourceMaterials    SourceMaterial[]
+  ingestionJobs      IngestionJob[]
+  examDefinitions    ExamDefinition[]
+  examAttempts       ExamAttempt[]
+  srsCards           SrsCard[]
+  topicPerformance   TopicPerformanceSnapshot[]
+  Topic              Topic[]
+  Subtopic           Subtopic[]
+  SourceChunk        SourceChunk[]
+  invitations        Invitation[]
+  flashcardDecks     FlashcardDeck[]
+  flashcardCards     FlashcardCard[]
+  flashcardCardSrsStates FlashcardCardSrsState[]
+  flashcardReviewLogs FlashcardReviewLog[]
+  fsrsParams         FsrsParams[]
 }
 
 model User {
@@ -114,8 +141,12 @@ model User {
   sourceMaterials   SourceMaterial[]
   examAttempts      ExamAttempt[]
   srsCards          SrsCard[]
-  topicPerformance  TopicPerformanceSnapshot[]
-  sentInvitations   Invitation[]               @relation("SentInvitations")
+  topicPerformance       TopicPerformanceSnapshot[]
+  sentInvitations        Invitation[]               @relation("SentInvitations")
+  flashcardDecks         FlashcardDeck[]
+  flashcardCardSrsStates FlashcardCardSrsState[]
+  flashcardReviewLogs    FlashcardReviewLog[]
+  fsrsParams             FsrsParams[]
 
   @@unique([tenantId, studentId])
   @@index([tenantId])
@@ -243,6 +274,7 @@ model Question {
   tags           QuestionTag[]
   attemptAnswers ExamAttemptAnswer[]
   srsCards       SrsCard[]
+  flashcardCards FlashcardCard[]
 
   @@index([tenantId, status])
   @@index([tenantId, subjectId, topicId])
@@ -409,6 +441,144 @@ model SrsCard {
   @@unique([userId, questionId])
   @@index([tenantId, userId])
   @@index([userId, nextReviewAt])
+}
+
+// ——— Flashcard decks and FSRS ———
+
+model FlashcardDeck {
+  id                   String       @id @default(cuid())
+  tenantId              String
+  userId               String
+  name                 String       // max 100 enforced in app
+  description          String?      @db.Text
+  source               DeckSource?
+  status               DeckStatus?
+  isPublic             Boolean      @default(false)
+  importCount          Int          @default(0)
+  version              Int          @default(1)
+  sourceDeckId         String?
+  importedAtVersion    Int?
+  shareCode            String?      @unique
+  shareCodeCreatedAt   DateTime?
+  retentionTarget      Float?       // 0.70–0.97, deck override
+  suggestedRetentionTarget Float?   // admin-seeded only
+  createdAt            DateTime    @default(now())
+  updatedAt            DateTime    @updatedAt
+
+  tenant       Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user         User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sourceDeck   FlashcardDeck?  @relation("DeckSource", fields: [sourceDeckId], references: [id], onDelete: SetNull)
+  importedDecks FlashcardDeck[] @relation("DeckSource")
+  cards        FlashcardCard[]
+  reviewLogs   FlashcardReviewLog[]
+
+  @@index([tenantId, userId])
+  @@index([shareCode])
+  @@index([tenantId, source])
+  @@index([tenantId, isPublic])
+  @@index([tenantId, isPublic, importCount])
+  @@index([sourceDeckId])
+}
+
+model FlashcardCard {
+  id           String   @id @default(cuid())
+  deckId       String
+  tenantId     String
+  questionId   String?  // for EXAM_GENERATED deck: link to source question (idempotent)
+  front        String   @db.Text
+  back         String   @db.Text
+  order        Int      @default(0)
+  sourceCardId String?
+  isOrphaned   Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  deck        FlashcardDeck        @relation(fields: [deckId], references: [id], onDelete: Cascade)
+  tenant      Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  question    Question?            @relation(fields: [questionId], references: [id], onDelete: SetNull)
+  sourceCard  FlashcardCard?       @relation("CardSource", fields: [sourceCardId], references: [id], onDelete: SetNull)
+  importedCards FlashcardCard[]    @relation("CardSource")
+  srsStates   FlashcardCardSrsState[]
+  reviewLogs  FlashcardReviewLog[]
+
+  @@index([deckId])
+  @@index([deckId, questionId])
+  @@index([tenantId])
+  @@index([sourceCardId])
+}
+
+model FlashcardCardSrsState {
+  id            String    @id @default(cuid())
+  tenantId      String
+  userId        String
+  cardId        String
+  state         CardState @default(NEW)
+  stability     Float?
+  difficulty    Float?
+  elapsedDays   Int       @default(0)
+  scheduledDays Int      @default(0)
+  reps          Int       @default(0)
+  lapses        Int       @default(0)
+  nextReviewAt  DateTime
+  lastReviewAt  DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  tenant Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  card   FlashcardCard       @relation(fields: [cardId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, cardId])
+  @@index([tenantId, userId])
+  @@index([userId, nextReviewAt])
+  @@index([userId, state])
+}
+
+model FlashcardReviewLog {
+  id               String    @id @default(cuid())
+  tenantId         String
+  userId           String
+  cardId           String
+  deckId           String
+  grade            Int       // 1–4
+  state            CardState
+  stabilityBefore  Float?
+  stabilityAfter   Float
+  difficultyBefore Float?
+  difficultyAfter  Float
+  retrievability   Float?
+  elapsedDays      Int
+  scheduledDays    Int
+  reviewedAt       DateTime  @default(now())
+
+  tenant Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  card   FlashcardCard  @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  deck   FlashcardDeck  @relation(fields: [deckId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, userId])
+  @@index([userId, reviewedAt])
+  @@index([userId, deckId])
+  @@index([userId, cardId])
+}
+
+model FsrsParams {
+  id                      String    @id @default(cuid())
+  tenantId                 String
+  userId                   String?   // null = tenant-level default
+  w                        Float[]   // 19-element FSRS parameter vector
+  retentionTarget          Float     @default(0.9) // 0.70–0.97
+  isOptimized              Boolean   @default(false)
+  optimizedAt              DateTime?
+  reviewCountAtOptimization Int?
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
+
+  tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, userId])   // tenant-level: userId null; student-level: one per (tenant, user)
+  @@index([tenantId])
 }
 
 // ——— Invitations ———
