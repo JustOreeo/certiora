@@ -36,13 +36,34 @@ export async function GET() {
       email: true,
       tenantName: true,
       tenantSlug: true,
+      tenantId: true,
       expiresAt: true,
       usedAt: true,
       createdAt: true,
     },
   });
 
-  return NextResponse.json(invitations);
+  const usedSlugs = invitations
+    .filter((inv) => inv.usedAt && !inv.tenantId && inv.tenantSlug)
+    .map((inv) => inv.tenantSlug!);
+
+  const tenantsBySlug = new Map<string, string>();
+  if (usedSlugs.length > 0) {
+    const tenants = await prisma.tenant.findMany({
+      where: { slug: { in: usedSlugs } },
+      select: { id: true, slug: true },
+    });
+    for (const t of tenants) tenantsBySlug.set(t.slug, t.id);
+  }
+
+  const result = invitations.map((inv) => ({
+    ...inv,
+    tenantId:
+      inv.tenantId ??
+      (inv.tenantSlug ? tenantsBySlug.get(inv.tenantSlug) ?? null : null),
+  }));
+
+  return NextResponse.json(result);
 }
 
 export async function POST(request: NextRequest) {
