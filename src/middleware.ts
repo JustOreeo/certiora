@@ -3,13 +3,24 @@ import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
 
 const dashboardPath = /^\/([^/]+)\/(admin|exams|flashcards|analytics)/;
-const tenantRootPath = /^\/([^/]+)$/; // exactly one segment: /:tenantSlug (student home)
+const tenantRootPath = /^\/([^/]+)$/;
 const superAdminPath = /^\/super-admin/;
+
+async function isTenantActive(slug: string, request: NextRequest): Promise<boolean> {
+  try {
+    const statusUrl = new URL(`/api/internal/tenant-status/${slug}`, request.url);
+    const res = await fetch(statusUrl);
+    if (!res.ok) return true;
+    const data = await res.json();
+    return data.isActive !== false;
+  } catch {
+    return true;
+  }
+}
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Protect /super-admin routes
   if (superAdminPath.test(pathname)) {
     const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
     if (!token) {
@@ -23,7 +34,6 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Protect tenant root: /:tenantSlug (student home page)
   const tenantRootMatch = pathname.match(tenantRootPath);
   if (tenantRootMatch) {
     const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
@@ -49,13 +59,13 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(login);
     }
 
-    if (token.tenantId) {
-      return NextResponse.next();
+    if (!(await isTenantActive(tenantSlug, request))) {
+      return NextResponse.rewrite(new URL("/suspended", request.url));
     }
+
     return NextResponse.next();
   }
 
-  // Protect dashboard routes: /[tenantSlug]/admin|exams|flashcards|analytics
   const match = pathname.match(dashboardPath);
   if (match) {
     const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
@@ -66,13 +76,11 @@ export async function middleware(request: NextRequest) {
     }
     const tenantSlug = match[1];
 
-    // Tenant isolation: user must not access another tenant's slug
     if (token.tenantId && token.tenantSlug && token.tenantSlug !== tenantSlug) {
       const correctPath = `/${token.tenantSlug}${pathname.slice(tenantSlug.length)}`;
       return NextResponse.redirect(new URL(correctPath, request.url));
     }
 
-    // Block expired student credentials at all entry points (not just login)
     if (
       token.role === "STUDENT" &&
       token.credentialsExpiresAt &&
@@ -84,6 +92,10 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(login);
     }
 
+    if (!(await isTenantActive(tenantSlug, request))) {
+      return NextResponse.rewrite(new URL("/suspended", request.url));
+    }
+
     return NextResponse.next();
   }
 
@@ -91,5 +103,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!api|_next/static|_next/image|favicon.ico|login|signup|accept-invitation).*)"],
+  matcher: ["/((?!api|_next/static|_next/image|favicon.ico|login|signup|accept-invitation|suspended).*)"],
 };
