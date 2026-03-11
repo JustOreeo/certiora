@@ -96,11 +96,16 @@ model Tenant {
   logoUrl      String?
   primaryColor String?
   customDomain String?  @unique
-  settings     Json? // tenant-specific settings
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  settings       Json?
+  isActive       Boolean   @default(true)
+  suspendedAt    DateTime?
+  organizationId String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
-  users              User[]
+  organization           Organization?  @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  courses                TenantCourse[]
+  users                  User[]
   subjects           Subject[]
   questions          Question[]
   sourceMaterials    SourceMaterial[]
@@ -129,11 +134,13 @@ model User {
   studentId            String?   // admin-assigned student ID (e.g. from CSV), unique per tenant
   role                 UserRole
   passwordHash         String? // for credentials-based auth
+  courseId              String?
   credentialsExpiresAt DateTime? // null for admins, set for students
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
 
   tenant            Tenant?                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  course            TenantCourse?              @relation("StudentCourse", fields: [courseId], references: [id], onDelete: SetNull)
   accounts          Account[]
   sessions          Session[]
   questionsCreated  Question[]                 @relation("CreatedBy")
@@ -149,6 +156,34 @@ model User {
   fsrsParams             FsrsParams[]
 
   @@unique([tenantId, studentId])
+  @@index([tenantId])
+}
+
+// ——— Organizations and courses ———
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  logoUrl   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenants Tenant[]
+}
+
+model TenantCourse {
+  id             String    @id @default(cuid())
+  tenantId       String
+  name           String
+  description    String?
+  targetExamDate DateTime?
+  isActive       Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  students User[] @relation("StudentCourse")
+
   @@index([tenantId])
 }
 
