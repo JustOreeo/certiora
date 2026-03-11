@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 
 type Invitation = {
   id: string;
   email: string;
   tenantName: string | null;
   tenantSlug: string | null;
+  tenantId: string | null;
   expiresAt: string;
   usedAt: string | null;
   createdAt: string;
@@ -248,6 +250,7 @@ export default function InvitationsPage() {
                   <th className="px-5 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wide">Status</th>
                   <th className="px-5 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wide">Expires</th>
                   <th className="px-5 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wide">Created</th>
+                  <th className="px-5 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wide" />
                 </tr>
               </thead>
               <tbody>
@@ -269,6 +272,19 @@ export default function InvitationsPage() {
                     </td>
                     <td className="px-5 py-3.5 text-sm text-secondary">
                       {new Date(inv.createdAt).toLocaleDateString()}
+                    </td>
+                    <td className="px-5 py-3.5 text-sm">
+                      {inv.usedAt && inv.tenantId ? (
+                        <Link
+                          href={`/super-admin/tenants/${inv.tenantId}`}
+                          className="inline-flex items-center gap-1 text-primary hover:text-primary-hover font-medium transition-colors"
+                        >
+                          View tenant
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="m9 18 6-6-6-6" />
+                          </svg>
+                        </Link>
+                      ) : null}
                     </td>
                   </tr>
                 ))}

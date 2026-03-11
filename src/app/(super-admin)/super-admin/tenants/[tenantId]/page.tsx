@@ -636,6 +636,8 @@ export default function TenantDetailPage() {
   const [error, setError] = useState("");
   const [activeTab, setActiveTab] = useState<TabId>("overview");
   const [editOpen, setEditOpen] = useState(false);
+  const [suspendModalOpen, setSuspendModalOpen] = useState(false);
+  const [suspending, setSuspending] = useState(false);
 
   const loadTenant = useCallback(() => {
     fetch(`/api/super-admin/tenants/${tenantId}`)
@@ -659,6 +661,31 @@ export default function TenantDetailPage() {
         <p className="text-sm text-error">{error || "Tenant not found"}</p>
       </div>
     );
+  }
+
+  async function handleSuspend() {
+    setSuspending(true);
+    const res = await fetch(`/api/super-admin/tenants/${tenantId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ isActive: false }),
+    });
+    setSuspending(false);
+    if (res.ok) {
+      setSuspendModalOpen(false);
+      loadTenant();
+    }
+  }
+
+  async function handleReactivate() {
+    setSuspending(true);
+    const res = await fetch(`/api/super-admin/tenants/${tenantId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ isActive: true }),
+    });
+    setSuspending(false);
+    if (res.ok) loadTenant();
   }
 
   const tabs: { id: TabId; label: string }[] = [
@@ -695,9 +722,11 @@ export default function TenantDetailPage() {
           <div className="flex items-center gap-2 mt-3">
             <button onClick={() => setEditOpen(true)} className="h-8 px-3 rounded-lg text-xs font-medium border border-border text-body hover:bg-surface-base transition-colors">Edit Tenant</button>
             <button
-              onClick={() => { /* Phase 11: suspend/reactivate */ }}
-              className={`h-8 px-3 rounded-lg text-xs font-medium transition-colors ${tenant.isActive ? "border border-error-border text-error hover:bg-error-bg" : "bg-success text-inverse hover:opacity-90"}`}
+              onClick={() => tenant.isActive ? setSuspendModalOpen(true) : handleReactivate()}
+              disabled={suspending}
+              className={`h-8 px-3 rounded-lg text-xs font-medium transition-colors disabled:opacity-50 inline-flex items-center gap-1.5 ${tenant.isActive ? "border border-error-border text-error hover:bg-error-bg" : "bg-success text-inverse hover:opacity-90"}`}
             >
+              {suspending && <SmallSpinner />}
               {tenant.isActive ? "Suspend Tenant" : "Reactivate Tenant"}
             </button>
           </div>
@@ -728,6 +757,45 @@ export default function TenantDetailPage() {
       {activeTab === "overview" && <OverviewTab tenant={tenant} />}
       {activeTab === "courses" && <CoursesTab tenantId={tenantId} />}
       {activeTab === "students" && <StudentsTab tenantId={tenantId} />}
+
+      {/* Suspend Confirmation Modal */}
+      {suspendModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="fixed inset-0 bg-black/30 transition-opacity" onClick={() => !suspending && setSuspendModalOpen(false)} />
+          <div className="relative bg-white rounded-2xl shadow-xl max-w-md w-full mx-4 overflow-hidden">
+            <div className="px-6 py-5">
+              <div className="w-12 h-12 rounded-xl bg-error-bg border border-error-border flex items-center justify-center mb-4">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#DC2626" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                  <line x1="12" y1="9" x2="12" y2="13" />
+                  <line x1="12" y1="17" x2="12.01" y2="17" />
+                </svg>
+              </div>
+              <h3 className="text-lg font-semibold text-heading mb-1">Suspend {tenant.name}?</h3>
+              <p className="text-sm text-secondary">
+                All users under <span className="font-medium text-body">{tenant.slug}</span> will be locked out immediately. No data will be deleted. You can reactivate this tenant at any time.
+              </p>
+            </div>
+            <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-border-subtle bg-surface-base">
+              <button
+                onClick={() => setSuspendModalOpen(false)}
+                disabled={suspending}
+                className="h-9 px-4 rounded-lg text-sm font-medium border border-border text-body hover:bg-surface-card transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSuspend}
+                disabled={suspending}
+                className="h-9 px-5 rounded-lg text-sm font-medium bg-error text-white hover:opacity-90 transition-opacity disabled:opacity-50 inline-flex items-center gap-2"
+              >
+                {suspending && <SmallSpinner />}
+                Suspend Tenant
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Edit Tenant Slide-Over */}
       <EditTenantSlideOver tenant={tenant} open={editOpen} onClose={() => setEditOpen(false)} onSaved={loadTenant} />
