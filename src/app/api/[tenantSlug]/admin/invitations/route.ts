@@ -10,6 +10,44 @@ const schema = z.object({
   expiresInDays: z.number().int().min(1).max(90).default(30),
 });
 
+export async function GET(
+  _request: NextRequest,
+  { params }: { params: { tenantSlug: string } }
+) {
+  const session = await getServerSession(authOptions);
+  if (!session || (session.role !== "ADMIN" && session.role !== "INSTRUCTOR")) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const tenant = await prisma.tenant.findUnique({
+    where: { slug: params.tenantSlug },
+    select: { id: true },
+  });
+
+  if (!tenant) {
+    return NextResponse.json({ error: "Tenant not found" }, { status: 404 });
+  }
+
+  if (session.tenantId !== tenant.id) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const invitations = await prisma.invitation.findMany({
+    where: { tenantId: tenant.id, role: "STUDENT" },
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      email: true,
+      token: true,
+      expiresAt: true,
+      usedAt: true,
+      createdAt: true,
+    },
+  });
+
+  return NextResponse.json(invitations);
+}
+
 export async function POST(
   request: NextRequest,
   { params }: { params: { tenantSlug: string } }

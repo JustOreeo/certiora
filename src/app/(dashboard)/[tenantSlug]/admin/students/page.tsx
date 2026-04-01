@@ -67,6 +67,10 @@ export default function StudentsPage() {
   const [inviteLink, setInviteLink] = useState("");
   const [inviteError, setInviteError] = useState("");
   const [copied, setCopied] = useState(false);
+  const [copiedRowId, setCopiedRowId] = useState<string | null>(null);
+  const [pendingInvites, setPendingInvites] = useState<Array<{
+    id: string; email: string; token: string; expiresAt: string; usedAt: string | null; createdAt: string;
+  }>>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -74,6 +78,7 @@ export default function StudentsPage() {
       router.push("/login");
     } else if (status === "authenticated") {
       loadStudents();
+      loadInvitations();
     }
   }, [status, router]);
 
@@ -86,6 +91,16 @@ export default function StudentsPage() {
       console.error("Failed to load students:", error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadInvitations = async () => {
+    try {
+      const res = await fetch(`/api/${params.tenantSlug}/admin/invitations`);
+      const data = await res.json();
+      setPendingInvites(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error("Failed to load invitations:", error);
     }
   };
 
@@ -141,12 +156,20 @@ export default function StudentsPage() {
     setInviteLink(`${window.location.origin}${data.invitationUrl}`);
     setInviteEmail("");
     setInviting(false);
+    loadInvitations();
   };
 
   const copyLink = async () => {
     await navigator.clipboard.writeText(inviteLink);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const copyRowLink = async (inv: { id: string; token: string }) => {
+    const url = `${window.location.origin}/accept-invitation?token=${inv.token}`;
+    await navigator.clipboard.writeText(url);
+    setCopiedRowId(inv.id);
+    setTimeout(() => setCopiedRowId(null), 2000);
   };
 
   const downloadCredentials = () => {
@@ -249,6 +272,62 @@ export default function StudentsPage() {
           </form>
         </div>
       </div>
+
+      {/* Pending invitations */}
+      {pendingInvites.length > 0 && (
+        <div className="bg-surface-card border border-border rounded-xl shadow-sm mb-5">
+          <div className="px-5 py-4 border-b border-border-subtle">
+            <h2 className="text-sm font-semibold text-heading">
+              Pending invitations{" "}
+              <span className="text-secondary font-normal">({pendingInvites.filter(i => !i.usedAt && new Date(i.expiresAt) >= new Date()).length})</span>
+            </h2>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-border-subtle">
+                  <th className="px-5 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wide">Email</th>
+                  <th className="px-5 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wide">Status</th>
+                  <th className="px-5 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wide">Expires</th>
+                  <th className="px-5 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wide" />
+                </tr>
+              </thead>
+              <tbody>
+                {pendingInvites.map((inv, i) => {
+                  const isExpired = new Date(inv.expiresAt) < new Date();
+                  const isPending = !inv.usedAt && !isExpired;
+                  return (
+                    <tr key={inv.id} className={`${i > 0 ? "border-t border-border-subtle" : ""} hover:bg-surface-base transition-colors`}>
+                      <td className="px-5 py-3.5 text-sm text-body">{inv.email}</td>
+                      <td className="px-5 py-3.5">
+                        {inv.usedAt ? (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border bg-success-bg text-success border-success-border">Used</span>
+                        ) : isExpired ? (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border bg-error-bg text-error border-error-border">Expired</span>
+                        ) : (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border bg-warning-bg text-warning border-warning-border">Pending</span>
+                        )}
+                      </td>
+                      <td className="px-5 py-3.5 text-sm text-secondary">{new Date(inv.expiresAt).toLocaleDateString()}</td>
+                      <td className="px-5 py-3.5 text-sm">
+                        {isPending && (
+                          <button
+                            onClick={() => copyRowLink(inv)}
+                            className="inline-flex items-center gap-1.5 text-secondary hover:text-body font-medium transition-colors"
+                          >
+                            <IconCopy />
+                            {copiedRowId === inv.id ? "Copied!" : "Copy link"}
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Generated credentials (after CSV upload) */}
       {credentials.length > 0 && (
