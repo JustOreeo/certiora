@@ -56,37 +56,38 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Invalid admin invitation" }, { status: 400 });
     }
 
-    const existingTenant = await prisma.tenant.findUnique({
-      where: { slug: invitation.tenantSlug },
-    });
-    if (existingTenant) {
-      return NextResponse.json({ error: "Tenant slug already taken" }, { status: 400 });
+    try {
+      await prisma.$transaction(async (tx) => {
+        const tenant = await tx.tenant.create({
+          data: { slug: invitation.tenantSlug!, name: invitation.tenantName! },
+        });
+
+        await tx.fsrsParams.create({
+          data: seedTenantFsrsParams(tenant.id),
+        });
+
+        await tx.user.create({
+          data: {
+            email: invitation.email,
+            name,
+            role: "ADMIN",
+            tenantId: tenant.id,
+            passwordHash,
+          },
+        });
+
+        await tx.invitation.update({
+          where: { token },
+          data: { usedAt: new Date(), tenantId: tenant.id },
+        });
+      });
+    } catch (e: unknown) {
+      const code = (e as { code?: string })?.code;
+      if (code === "P2002") {
+        return NextResponse.json({ error: "Tenant slug already taken" }, { status: 409 });
+      }
+      throw e;
     }
-
-    await prisma.$transaction(async (tx) => {
-      const tenant = await tx.tenant.create({
-        data: { slug: invitation.tenantSlug!, name: invitation.tenantName! },
-      });
-
-      await tx.fsrsParams.create({
-        data: seedTenantFsrsParams(tenant.id),
-      });
-
-      await tx.user.create({
-        data: {
-          email: invitation.email,
-          name,
-          role: "ADMIN",
-          tenantId: tenant.id,
-          passwordHash,
-        },
-      });
-
-      await tx.invitation.update({
-        where: { token },
-        data: { usedAt: new Date(), tenantId: tenant.id },
-      });
-    });
   } else if (invitation.role === "STUDENT") {
     if (!invitation.tenantId) {
       return NextResponse.json({ error: "Invalid student invitation" }, { status: 400 });
