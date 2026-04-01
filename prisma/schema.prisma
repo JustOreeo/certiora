@@ -626,14 +626,14 @@ model Invitation {
   tenantId   String?   // null for ADMIN invitations (tenant created on acceptance)
   tenantName String?   // for ADMIN invitations
   tenantSlug String?   // for ADMIN invitations
-  invitedBy  String
+  invitedBy  String?   // nullable: preserved as audit trail if inviter is deleted
   expiresAt  DateTime
   usedAt     DateTime? // null = available; set = consumed (one-time only)
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
 
-  tenant  Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  inviter User    @relation("SentInvitations", fields: [invitedBy], references: [id], onDelete: Cascade)
+  tenant  Tenant? @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  inviter User?   @relation("SentInvitations", fields: [invitedBy], references: [id], onDelete: SetNull)
 
   @@index([token])
   @@index([tenantId])
