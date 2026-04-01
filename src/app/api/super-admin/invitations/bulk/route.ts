@@ -29,7 +29,7 @@ const rowSchema = z.object({
 });
 
 type RowResult =
-  | { status: "created"; email: string; tenantName: string; tenantSlug: string; invitationUrl: string }
+  | { status: "created"; email: string; tenantName: string; tenantSlug: string; invitationUrl: string; expiresInDays: number }
   | { status: "skipped"; email: string; tenantSlug: string; reason: string };
 
 export async function POST(request: NextRequest) {
@@ -142,12 +142,14 @@ export async function POST(request: NextRequest) {
     });
     await addEmailJob({ to: email, ...emailTemplate });
 
+    const actualDays = expiresInDays ?? ADMIN_INVITE_DEFAULT_EXPIRY_DAYS;
     results.push({
       status: "created",
       email,
       tenantName,
       tenantSlug,
       invitationUrl: `/accept-invitation?token=${invitation.token}`,
+      expiresInDays: actualDays,
     });
   }
 
