@@ -58,3 +58,17 @@ if (!ingestionWorker && !fsrsOptimizeWorker && !adminDeckWorker && !emailWorker)
   console.error("Redis not configured. Set REDIS_URL to run workers.");
   process.exit(1);
 }
+
+async function shutdown(signal: string) {
+  console.log(`${signal} received — shutting down workers gracefully`);
+  await Promise.allSettled([
+    ingestionWorker?.close(),
+    fsrsOptimizeWorker?.close(),
+    adminDeckWorker?.close(),
+    emailWorker?.close(),
+  ]);
+  process.exit(0);
+}
+
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));
