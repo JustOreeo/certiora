@@ -125,7 +125,10 @@ export const emailQueue =
   });
 
 export function addEmailJob(payload: SendEmailOptions) {
-  if (!emailQueue) return Promise.resolve(undefined);
+  if (!emailQueue) {
+    console.warn(`[email-queue] Skipped email to ${payload.to} — Redis not configured`);
+    return Promise.resolve(undefined);
+  }
   return emailQueue.add(EMAIL_JOB, payload);
 }
 
