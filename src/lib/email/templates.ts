@@ -1,4 +1,10 @@
-const BASE_URL = process.env.NEXTAUTH_URL ?? "http://localhost:3000";
+if (!process.env.NEXTAUTH_URL) {
+  console.warn("[email] NEXTAUTH_URL not set — invitation links will use http://localhost:3000");
+}
+
+function getBaseUrl(): string {
+  return process.env.NEXTAUTH_URL ?? "http://localhost:3000";
+}
 
 function layout(body: string): string {
   return `<!DOCTYPE html>
@@ -76,7 +82,7 @@ export function adminInvitationEmail(opts: {
   token: string;
   expiresAt: Date;
 }) {
-  const url = `${BASE_URL}/accept-invitation?token=${opts.token}`;
+  const url = `${getBaseUrl()}/accept-invitation?token=${opts.token}`;
   const expiry = opts.expiresAt.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
 
   return {
@@ -104,7 +110,7 @@ export function studentInvitationEmail(opts: {
   token: string;
   expiresAt: Date;
 }) {
-  const url = `${BASE_URL}/accept-invitation?token=${opts.token}`;
+  const url = `${getBaseUrl()}/accept-invitation?token=${opts.token}`;
   const expiry = opts.expiresAt.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
 
   return {
@@ -126,7 +132,7 @@ export function studentInvitationEmail(opts: {
 }
 
 export function welcomeEmail(opts: { name: string; role: "ADMIN" | "STUDENT"; tenantName: string | null }) {
-  const loginUrl = `${BASE_URL}/login`;
+  const loginUrl = `${getBaseUrl()}/login`;
   const roleLabel = opts.role === "ADMIN" ? "administrator" : "student";
   const context = opts.tenantName ? ` at <strong>${opts.tenantName}</strong>` : "";
 
