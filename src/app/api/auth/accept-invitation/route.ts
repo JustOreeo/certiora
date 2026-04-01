@@ -9,7 +9,7 @@ import { invitationRatelimit } from "@/lib/ratelimit";
 const schema = z.object({
   token: z.string().min(1),
   name: z.string().min(1, "Name is required"),
-  password: z.string().min(8, "Password must be at least 8 characters"),
+  password: z.string().min(10, "Password must be at least 10 characters"),
 });
 
 export async function POST(request: NextRequest) {
