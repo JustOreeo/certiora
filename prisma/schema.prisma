@@ -629,6 +629,8 @@ model Invitation {
   invitedBy  String?   // nullable: preserved as audit trail if inviter is deleted
   expiresAt  DateTime
   usedAt     DateTime? // null = available; set = consumed (one-time only)
+  revokedAt  DateTime? // set on soft-delete revoke
+  revokedBy  String?   // userId who revoked the invitation
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
 

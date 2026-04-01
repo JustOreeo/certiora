@@ -13,6 +13,7 @@ type Invitation = {
   token: string;
   expiresAt: string;
   usedAt: string | null;
+  revokedAt: string | null;
   createdAt: string;
   inviter: { name: string; email: string } | null;
 };
@@ -53,6 +54,13 @@ function IconUpload() {
 }
 
 function StatusBadge({ inv }: { inv: Invitation }) {
+  if (inv.revokedAt) {
+    return (
+      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border bg-error-bg text-error border-error-border">
+        Revoked
+      </span>
+    );
+  }
   if (inv.usedAt) {
     return (
       <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border bg-success-bg text-success border-success-border">
@@ -405,7 +413,7 @@ export default function InvitationsPage() {
                     </td>
                     <td className="px-5 py-3.5 text-sm">
                       <div className="flex items-center gap-3">
-                        {!inv.usedAt && (
+                        {!inv.usedAt && !inv.revokedAt && (
                           <>
                             {new Date(inv.expiresAt) >= new Date() && (
                               <button

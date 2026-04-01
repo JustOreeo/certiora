@@ -29,7 +29,7 @@ export async function PATCH(
 
   const invitation = await prisma.invitation.findUnique({
     where: { id: params.id },
-    select: { id: true, role: true, usedAt: true, email: true, tenantName: true },
+    select: { id: true, role: true, usedAt: true, revokedAt: true, email: true, tenantName: true },
   });
 
   if (!invitation) {
@@ -42,6 +42,10 @@ export async function PATCH(
 
   if (invitation.usedAt) {
     return NextResponse.json({ error: "Cannot resend a used invitation" }, { status: 400 });
+  }
+
+  if (invitation.revokedAt) {
+    return NextResponse.json({ error: "Cannot resend a revoked invitation" }, { status: 400 });
   }
 
   if (!invitation.tenantName) {
@@ -97,7 +101,10 @@ export async function DELETE(
     return NextResponse.json({ error: "Cannot revoke a used invitation" }, { status: 400 });
   }
 
-  await prisma.invitation.delete({ where: { id: params.id } });
+  await prisma.invitation.update({
+    where: { id: params.id },
+    data: { revokedAt: new Date(), revokedBy: session.user.id },
+  });
 
   return new NextResponse(null, { status: 204 });
 }

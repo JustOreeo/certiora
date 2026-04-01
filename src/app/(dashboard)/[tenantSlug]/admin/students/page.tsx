@@ -77,7 +77,7 @@ export default function StudentsPage() {
   const showToast = useCallback((msg: string) => { setToast(msg); }, []);
   const [inviteLoadError, setInviteLoadError] = useState(false);
   const [pendingInvites, setPendingInvites] = useState<Array<{
-    id: string; email: string; token: string; expiresAt: string; usedAt: string | null; createdAt: string;
+    id: string; email: string; token: string; expiresAt: string; usedAt: string | null; revokedAt: string | null; createdAt: string;
     inviter: { name: string; email: string } | null;
   }>>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -352,12 +352,14 @@ export default function StudentsPage() {
               <tbody>
                 {pendingInvites.map((inv, i) => {
                   const isExpired = new Date(inv.expiresAt) < new Date();
-                  const isPending = !inv.usedAt && !isExpired;
+                  const isPending = !inv.usedAt && !inv.revokedAt && !isExpired;
                   return (
                     <tr key={inv.id} className={`${i > 0 ? "border-t border-border-subtle" : ""} hover:bg-surface-base transition-colors`}>
                       <td className="px-5 py-3.5 text-sm text-body">{inv.email}</td>
                       <td className="px-5 py-3.5">
-                        {inv.usedAt ? (
+                        {inv.revokedAt ? (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border bg-error-bg text-error border-error-border">Revoked</span>
+                        ) : inv.usedAt ? (
                           <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border bg-success-bg text-success border-success-border">Used</span>
                         ) : isExpired ? (
                           <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border bg-error-bg text-error border-error-border">Expired</span>
@@ -374,7 +376,7 @@ export default function StudentsPage() {
                         )}
                       </td>
                       <td className="px-5 py-3.5 text-sm">
-                        {!inv.usedAt && (
+                        {!inv.usedAt && !inv.revokedAt && (
                           <div className="flex items-center gap-3">
                             {isPending && (
                               <button

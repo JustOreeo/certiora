@@ -43,6 +43,7 @@ export async function GET() {
       token: true,
       expiresAt: true,
       usedAt: true,
+      revokedAt: true,
       createdAt: true,
       inviter: { select: { name: true, email: true } },
     },
@@ -92,7 +93,7 @@ export async function POST(request: NextRequest) {
 
   // Check no pending invitation for same slug
   const existingInvite = await prisma.invitation.findFirst({
-    where: { tenantSlug, usedAt: null, expiresAt: { gt: new Date() } },
+    where: { tenantSlug, usedAt: null, revokedAt: null, expiresAt: { gt: new Date() } },
   });
   if (existingInvite) {
     return NextResponse.json(

@@ -27,11 +27,16 @@ export async function GET(request: NextRequest) {
       tenantSlug: true,
       expiresAt: true,
       usedAt: true,
+      revokedAt: true,
     },
   });
 
   if (!invitation) {
     return NextResponse.json({ error: "Invalid invitation" }, { status: 404 });
+  }
+
+  if (invitation.revokedAt) {
+    return NextResponse.json({ error: "This invitation has been revoked" }, { status: 410 });
   }
 
   if (invitation.usedAt) {
