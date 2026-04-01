@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
 import { toUserMessage } from "@/lib/errors";
+import { Toast } from "@/components/ui/Toast";
 
 type Student = {
   id: string;
@@ -72,6 +73,8 @@ export default function StudentsPage() {
   const [revoking, setRevoking] = useState<string | null>(null);
   const [resending, setResending] = useState<string | null>(null);
   const [confirmRevokeId, setConfirmRevokeId] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+  const showToast = useCallback((msg: string) => { setToast(msg); }, []);
   const [pendingInvites, setPendingInvites] = useState<Array<{
     id: string; email: string; token: string; expiresAt: string; usedAt: string | null; createdAt: string;
     inviter: { name: string; email: string } | null;
@@ -160,6 +163,7 @@ export default function StudentsPage() {
 
     setInviteLink(`${window.location.origin}${data.invitationUrl}`);
     setInviteEmail("");
+    showToast("Invitation sent");
     setInviting(false);
     loadInvitations();
   };
@@ -182,6 +186,7 @@ export default function StudentsPage() {
     setConfirmRevokeId(null);
     await fetch(`/api/${params.tenantSlug}/admin/invitations/${id}`, { method: "DELETE" });
     setRevoking(null);
+    showToast("Invitation revoked");
     loadInvitations();
   };
 
@@ -195,6 +200,7 @@ export default function StudentsPage() {
     const data = await res.json();
     if (res.ok) {
       setInviteLink(`${window.location.origin}${data.invitationUrl}`);
+      showToast("Invitation extended — new link ready");
     }
     setResending(null);
     loadInvitations();
@@ -224,6 +230,7 @@ export default function StudentsPage() {
 
   return (
     <div className="px-8 py-8">
+      {toast && <Toast message={toast} onDismiss={() => setToast(null)} />}
       {/* Page header */}
       <div className="flex items-center justify-between mb-7">
         <div>

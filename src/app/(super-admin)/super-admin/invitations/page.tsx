@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { Toast } from "@/components/ui/Toast";
 
 type Invitation = {
   id: string;
@@ -87,6 +88,8 @@ export default function InvitationsPage() {
   const [revoking, setRevoking] = useState<string | null>(null);
   const [resending, setResending] = useState<string | null>(null);
   const [confirmRevokeId, setConfirmRevokeId] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+  const showToast = useCallback((msg: string) => { setToast(msg); }, []);
   const [bulkUploading, setBulkUploading] = useState(false);
   const [bulkResult, setBulkResult] = useState<{ created: number; skipped: number; results: Array<{ status: string; email: string; tenantSlug: string; invitationUrl?: string; reason?: string }> } | null>(null);
   const bulkFileRef = useRef<HTMLInputElement>(null);
@@ -123,6 +126,7 @@ export default function InvitationsPage() {
 
     setGeneratedLink(`${window.location.origin}${data.invitationUrl}`);
     setForm({ email: "", tenantName: "", tenantSlug: "", expiresInDays: 7 });
+    showToast("Invitation created");
     setSubmitting(false);
     loadInvitations();
   };
@@ -148,6 +152,7 @@ export default function InvitationsPage() {
     setConfirmRevokeId(null);
     await fetch(`/api/super-admin/invitations/${inv.id}`, { method: "DELETE" });
     setRevoking(null);
+    showToast("Invitation revoked");
     loadInvitations();
   };
 
@@ -162,6 +167,7 @@ export default function InvitationsPage() {
     const data = await res.json();
     if (res.ok) {
       setBulkResult(data);
+      showToast(`${data.created} invitation${data.created !== 1 ? "s" : ""} created`);
       loadInvitations();
     }
     setBulkUploading(false);
@@ -178,6 +184,7 @@ export default function InvitationsPage() {
     const data = await res.json();
     if (res.ok) {
       setGeneratedLink(`${window.location.origin}${data.invitationUrl}`);
+      showToast("Invitation extended — new link ready");
     }
     setResending(null);
     loadInvitations();
@@ -185,6 +192,7 @@ export default function InvitationsPage() {
 
   return (
     <div className="px-8 py-8 space-y-5">
+      {toast && <Toast message={toast} onDismiss={() => setToast(null)} />}
       <div className="mb-7">
         <h1 className="text-[22px] font-semibold text-heading">Admin Invitations</h1>
         <p className="text-sm text-secondary mt-0.5">Invite review center admins to join the platform.</p>
