@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 
 type Invitation = {
@@ -41,6 +41,16 @@ function IconCopy() {
   );
 }
 
+function IconUpload() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="16 16 12 12 8 16" />
+      <line x1="12" y1="12" x2="12" y2="21" />
+      <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3" />
+    </svg>
+  );
+}
+
 function StatusBadge({ inv }: { inv: Invitation }) {
   if (inv.usedAt) {
     return (
@@ -76,6 +86,9 @@ export default function InvitationsPage() {
   const [copiedRowId, setCopiedRowId] = useState<string | null>(null);
   const [revoking, setRevoking] = useState<string | null>(null);
   const [resending, setResending] = useState<string | null>(null);
+  const [bulkUploading, setBulkUploading] = useState(false);
+  const [bulkResult, setBulkResult] = useState<{ created: number; skipped: number; results: Array<{ status: string; email: string; tenantSlug: string; invitationUrl?: string; reason?: string }> } | null>(null);
+  const bulkFileRef = useRef<HTMLInputElement>(null);
 
   const loadInvitations = () => {
     fetch("/api/super-admin/invitations")
@@ -135,6 +148,23 @@ export default function InvitationsPage() {
     await fetch(`/api/super-admin/invitations/${inv.id}`, { method: "DELETE" });
     setRevoking(null);
     loadInvitations();
+  };
+
+  const handleBulkUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setBulkUploading(true);
+    setBulkResult(null);
+    const formData = new FormData();
+    formData.append("file", file);
+    const res = await fetch("/api/super-admin/invitations/bulk", { method: "POST", body: formData });
+    const data = await res.json();
+    if (res.ok) {
+      setBulkResult(data);
+      loadInvitations();
+    }
+    setBulkUploading(false);
+    e.target.value = "";
   };
 
   const resendInvitation = async (inv: Invitation) => {
@@ -250,6 +280,49 @@ export default function InvitationsPage() {
               </button>
             </div>
           </form>
+        </div>
+      </div>
+
+      {/* Bulk CSV upload */}
+      <div className="bg-surface-card border border-border rounded-xl shadow-sm">
+        <div className="px-5 py-4 border-b border-border-subtle">
+          <h2 className="text-sm font-semibold text-heading">Bulk invite via CSV</h2>
+          <p className="text-xs text-secondary mt-0.5">
+            Upload a CSV to create multiple admin invitations at once.
+          </p>
+        </div>
+        <div className="px-5 py-4 space-y-3">
+          <div className="bg-info-bg border border-info-border rounded-lg px-4 py-3">
+            <p className="text-xs font-semibold text-info mb-1.5">Required CSV columns</p>
+            <pre className="text-xs font-mono text-body bg-surface-card border border-border rounded-lg px-3 py-2 whitespace-pre-wrap">
+              {"email,tenantName,tenantSlug,expiresInDays\nadmin@center.com,Excellence Review,excellence-review,7"}
+            </pre>
+            <p className="text-xs text-secondary mt-1.5">expiresInDays is optional (defaults to 7).</p>
+          </div>
+          {bulkResult && (
+            <div className={`rounded-lg px-4 py-3 text-sm border ${bulkResult.created > 0 ? "bg-success-bg border-success-border text-success" : "bg-warning-bg border-warning-border text-warning"}`}>
+              {bulkResult.created} created, {bulkResult.skipped} skipped.
+              {bulkResult.results.filter(r => r.status === "skipped").length > 0 && (
+                <ul className="mt-2 space-y-1 text-xs">
+                  {bulkResult.results.filter(r => r.status === "skipped").map((r, i) => (
+                    <li key={i}><span className="font-mono">{r.email || r.tenantSlug}</span> — {r.reason}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+          <label className={`inline-flex items-center gap-2 h-9 px-4 rounded-lg text-sm font-medium transition-colors cursor-pointer ${bulkUploading ? "bg-border text-secondary" : "bg-surface-base border border-border text-body hover:border-border-strong"}`}>
+            {bulkUploading ? <Spinner /> : <IconUpload />}
+            {bulkUploading ? "Uploading…" : "Upload CSV"}
+            <input
+              ref={bulkFileRef}
+              type="file"
+              accept=".csv"
+              onChange={handleBulkUpload}
+              className="hidden"
+              disabled={bulkUploading}
+            />
+          </label>
         </div>
       </div>
 
