@@ -71,6 +71,7 @@ export default function StudentsPage() {
   const [copiedRowId, setCopiedRowId] = useState<string | null>(null);
   const [pendingInvites, setPendingInvites] = useState<Array<{
     id: string; email: string; token: string; expiresAt: string; usedAt: string | null; createdAt: string;
+    inviter: { name: string; email: string } | null;
   }>>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -299,6 +300,7 @@ export default function StudentsPage() {
                   <th className="px-5 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wide">Email</th>
                   <th className="px-5 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wide">Status</th>
                   <th className="px-5 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wide">Expires</th>
+                  <th className="px-5 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wide">Invited by</th>
                   <th className="px-5 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wide" />
                 </tr>
               </thead>
@@ -319,6 +321,13 @@ export default function StudentsPage() {
                         )}
                       </td>
                       <td className="px-5 py-3.5 text-sm text-secondary">{new Date(inv.expiresAt).toLocaleDateString()}</td>
+                      <td className="px-5 py-3.5 text-sm text-secondary">
+                        {inv.inviter ? (
+                          <span title={inv.inviter.email}>{inv.inviter.name}</span>
+                        ) : (
+                          <span className="text-muted">—</span>
+                        )}
+                      </td>
                       <td className="px-5 py-3.5 text-sm">
                         {isPending && (
                           <button

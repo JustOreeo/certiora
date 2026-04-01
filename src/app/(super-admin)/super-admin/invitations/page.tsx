@@ -13,6 +13,7 @@ type Invitation = {
   expiresAt: string;
   usedAt: string | null;
   createdAt: string;
+  inviter: { name: string; email: string } | null;
 };
 
 type NewInviteForm = {
@@ -258,7 +259,7 @@ export default function InvitationsPage() {
                   <th className="px-5 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wide">Tenant</th>
                   <th className="px-5 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wide">Status</th>
                   <th className="px-5 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wide">Expires</th>
-                  <th className="px-5 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wide">Created</th>
+                  <th className="px-5 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wide">Invited by</th>
                   <th className="px-5 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wide" />
                 </tr>
               </thead>
@@ -280,7 +281,11 @@ export default function InvitationsPage() {
                       {new Date(inv.expiresAt).toLocaleDateString()}
                     </td>
                     <td className="px-5 py-3.5 text-sm text-secondary">
-                      {new Date(inv.createdAt).toLocaleDateString()}
+                      {inv.inviter ? (
+                        <span title={inv.inviter.email}>{inv.inviter.name}</span>
+                      ) : (
+                        <span className="text-muted">—</span>
+                      )}
                     </td>
                     <td className="px-5 py-3.5 text-sm">
                       <div className="flex items-center gap-3">

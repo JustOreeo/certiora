@@ -41,6 +41,7 @@ export async function GET() {
       expiresAt: true,
       usedAt: true,
       createdAt: true,
+      inviter: { select: { name: true, email: true } },
     },
   });
 
