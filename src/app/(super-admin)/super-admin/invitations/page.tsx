@@ -74,6 +74,7 @@ export default function InvitationsPage() {
   const [generatedLink, setGeneratedLink] = useState("");
   const [copied, setCopied] = useState(false);
   const [copiedRowId, setCopiedRowId] = useState<string | null>(null);
+  const [revoking, setRevoking] = useState<string | null>(null);
 
   const loadInvitations = () => {
     fetch("/api/super-admin/invitations")
@@ -125,6 +126,14 @@ export default function InvitationsPage() {
     await navigator.clipboard.writeText(url);
     setCopiedRowId(inv.id);
     setTimeout(() => setCopiedRowId(null), 2000);
+  };
+
+  const revokeInvitation = async (inv: Invitation) => {
+    if (!confirm(`Revoke invitation for ${inv.email}?`)) return;
+    setRevoking(inv.id);
+    await fetch(`/api/super-admin/invitations/${inv.id}`, { method: "DELETE" });
+    setRevoking(null);
+    loadInvitations();
   };
 
   return (
@@ -290,13 +299,23 @@ export default function InvitationsPage() {
                     <td className="px-5 py-3.5 text-sm">
                       <div className="flex items-center gap-3">
                         {!inv.usedAt && new Date(inv.expiresAt) >= new Date() && (
-                          <button
-                            onClick={() => copyRowLink(inv)}
-                            className="inline-flex items-center gap-1.5 text-secondary hover:text-body font-medium transition-colors"
-                          >
-                            <IconCopy />
-                            {copiedRowId === inv.id ? "Copied!" : "Copy link"}
-                          </button>
+                          <>
+                            <button
+                              onClick={() => copyRowLink(inv)}
+                              className="inline-flex items-center gap-1.5 text-secondary hover:text-body font-medium transition-colors"
+                            >
+                              <IconCopy />
+                              {copiedRowId === inv.id ? "Copied!" : "Copy link"}
+                            </button>
+                            <button
+                              onClick={() => revokeInvitation(inv)}
+                              disabled={revoking === inv.id}
+                              className="inline-flex items-center gap-1 text-error hover:opacity-75 font-medium transition-opacity disabled:opacity-50"
+                            >
+                              {revoking === inv.id ? <Spinner /> : null}
+                              Revoke
+                            </button>
+                          </>
                         )}
                         {inv.usedAt && inv.tenantId && (
                           <Link

@@ -69,6 +69,7 @@ export default function StudentsPage() {
   const [inviteError, setInviteError] = useState("");
   const [copied, setCopied] = useState(false);
   const [copiedRowId, setCopiedRowId] = useState<string | null>(null);
+  const [revoking, setRevoking] = useState<string | null>(null);
   const [pendingInvites, setPendingInvites] = useState<Array<{
     id: string; email: string; token: string; expiresAt: string; usedAt: string | null; createdAt: string;
     inviter: { name: string; email: string } | null;
@@ -172,6 +173,14 @@ export default function StudentsPage() {
     await navigator.clipboard.writeText(url);
     setCopiedRowId(inv.id);
     setTimeout(() => setCopiedRowId(null), 2000);
+  };
+
+  const revokeInvitation = async (id: string, email: string) => {
+    if (!confirm(`Revoke invitation for ${email}?`)) return;
+    setRevoking(id);
+    await fetch(`/api/${params.tenantSlug}/admin/invitations/${id}`, { method: "DELETE" });
+    setRevoking(null);
+    loadInvitations();
   };
 
   const downloadCredentials = () => {
@@ -330,13 +339,23 @@ export default function StudentsPage() {
                       </td>
                       <td className="px-5 py-3.5 text-sm">
                         {isPending && (
-                          <button
-                            onClick={() => copyRowLink(inv)}
-                            className="inline-flex items-center gap-1.5 text-secondary hover:text-body font-medium transition-colors"
-                          >
-                            <IconCopy />
-                            {copiedRowId === inv.id ? "Copied!" : "Copy link"}
-                          </button>
+                          <div className="flex items-center gap-3">
+                            <button
+                              onClick={() => copyRowLink(inv)}
+                              className="inline-flex items-center gap-1.5 text-secondary hover:text-body font-medium transition-colors"
+                            >
+                              <IconCopy />
+                              {copiedRowId === inv.id ? "Copied!" : "Copy link"}
+                            </button>
+                            <button
+                              onClick={() => revokeInvitation(inv.id, inv.email)}
+                              disabled={revoking === inv.id}
+                              className="inline-flex items-center gap-1 text-error hover:opacity-75 font-medium transition-opacity disabled:opacity-50"
+                            >
+                              {revoking === inv.id ? <Spinner /> : null}
+                              Revoke
+                            </button>
+                          </div>
                         )}
                       </td>
                     </tr>
