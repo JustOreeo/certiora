@@ -117,8 +117,13 @@ export async function POST(request: NextRequest) {
     });
 
     // Fan-out ACTIVE admin-seeded decks to the new student (Phase 9).
+    // Runs outside the transaction; log on failure so it can be retried manually.
     if (newUserId) {
-      addAdminDeckOnboardJob({ tenantId: invitation.tenantId!, userId: newUserId });
+      try {
+        await addAdminDeckOnboardJob({ tenantId: invitation.tenantId!, userId: newUserId });
+      } catch (err) {
+        console.error(`[accept-invitation] Failed to enqueue deck onboard job for user=${newUserId}:`, err);
+      }
     }
   } else {
     return NextResponse.json({ error: "Invalid invitation role" }, { status: 400 });
