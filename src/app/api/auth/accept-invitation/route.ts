@@ -5,6 +5,8 @@ import { addAdminDeckOnboardJob } from "@/lib/queue";
 import { hash } from "bcryptjs";
 import { z } from "zod";
 import { invitationRatelimit } from "@/lib/ratelimit";
+import { addEmailJob } from "@/lib/queue";
+import { welcomeEmail } from "@/lib/email/templates";
 
 const schema = z.object({
   token: z.string().min(1),
@@ -121,6 +123,21 @@ export async function POST(request: NextRequest) {
   } else {
     return NextResponse.json({ error: "Invalid invitation role" }, { status: 400 });
   }
+
+  // Send welcome email after successful account creation
+  let tenantName: string | null = null;
+  if (invitation.tenantName) {
+    tenantName = invitation.tenantName;
+  } else if (invitation.tenantId) {
+    const tenant = await prisma.tenant.findUnique({ where: { id: invitation.tenantId }, select: { name: true } });
+    tenantName = tenant?.name ?? null;
+  }
+  const emailTemplate = welcomeEmail({
+    name,
+    role: invitation.role as "ADMIN" | "STUDENT",
+    tenantName,
+  });
+  await addEmailJob({ to: invitation.email, ...emailTemplate });
 
   return NextResponse.json({ success: true });
 }

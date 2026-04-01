@@ -4,6 +4,8 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { randomBytes } from "crypto";
 import { ADMIN_INVITE_DEFAULT_EXPIRY_DAYS } from "@/lib/invitation-config";
+import { addEmailJob } from "@/lib/queue";
+import { adminInvitationEmail } from "@/lib/email/templates";
 
 type RowResult =
   | { status: "created"; email: string; tenantName: string; tenantSlug: string; invitationUrl: string }
@@ -40,6 +42,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const inviterUser = await prisma.user.findUnique({ where: { id: session.user.id }, select: { name: true } });
   const results: RowResult[] = [];
 
   for (let i = 1; i < lines.length; i++) {
@@ -103,6 +106,15 @@ export async function POST(request: NextRequest) {
         expiresAt,
       },
     });
+
+    const emailTemplate = adminInvitationEmail({
+      email,
+      tenantName,
+      inviterName: inviterUser?.name ?? null,
+      token: invitation.token,
+      expiresAt,
+    });
+    await addEmailJob({ to: email, ...emailTemplate });
 
     results.push({
       status: "created",

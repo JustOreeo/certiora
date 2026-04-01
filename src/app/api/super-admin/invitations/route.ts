@@ -6,6 +6,8 @@ import { prisma } from "@/lib/db";
 import { z } from "zod";
 import { randomBytes } from "crypto";
 import { ADMIN_INVITE_DEFAULT_EXPIRY_DAYS, ADMIN_INVITE_MAX_EXPIRY_DAYS } from "@/lib/invitation-config";
+import { addEmailJob } from "@/lib/queue";
+import { adminInvitationEmail } from "@/lib/email/templates";
 
 function requireSuperAdmin(session: Session | null) {
   if (!session || session.role !== "SUPER_ADMIN") {
@@ -121,6 +123,16 @@ export async function POST(request: NextRequest) {
   });
 
   const invitationUrl = `/accept-invitation?token=${invitation.token}`;
+
+  const inviterUser = await prisma.user.findUnique({ where: { id: session!.user.id }, select: { name: true } });
+  const emailTemplate = adminInvitationEmail({
+    email,
+    tenantName,
+    inviterName: inviterUser?.name ?? null,
+    token: invitation.token,
+    expiresAt,
+  });
+  await addEmailJob({ to: email, ...emailTemplate });
 
   return NextResponse.json({ invitationUrl, token: invitation.token }, { status: 201 });
 }

@@ -5,6 +5,8 @@ import { prisma } from "@/lib/db";
 import { z } from "zod";
 import { randomBytes } from "crypto";
 import { STUDENT_INVITE_DEFAULT_EXPIRY_DAYS, STUDENT_INVITE_MAX_EXPIRY_DAYS } from "@/lib/invitation-config";
+import { addEmailJob } from "@/lib/queue";
+import { studentInvitationEmail } from "@/lib/email/templates";
 
 const schema = z.object({
   email: z.string().email("Valid email required"),
@@ -61,7 +63,7 @@ export async function POST(
 
   const tenant = await prisma.tenant.findUnique({
     where: { slug: params.tenantSlug },
-    select: { id: true },
+    select: { id: true, name: true },
   });
 
   if (!tenant) {
@@ -118,6 +120,16 @@ export async function POST(
   });
 
   const invitationUrl = `/accept-invitation?token=${invitation.token}`;
+
+  const inviterUser = await prisma.user.findUnique({ where: { id: session.user.id }, select: { name: true } });
+  const emailTemplate = studentInvitationEmail({
+    email,
+    tenantName: tenant.name,
+    inviterName: inviterUser?.name ?? null,
+    token: invitation.token,
+    expiresAt,
+  });
+  await addEmailJob({ to: email, ...emailTemplate });
 
   return NextResponse.json({ invitationUrl, token: invitation.token }, { status: 201 });
 }

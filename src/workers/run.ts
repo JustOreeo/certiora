@@ -7,6 +7,7 @@ import {
   createIngestionWorker,
   createFsrsOptimizeWorker,
   createAdminDeckWorker,
+  createEmailWorker,
   ADMIN_DECK_FANOUT_JOB,
   ADMIN_DECK_ONBOARD_JOB,
 } from "@/lib/queue";
@@ -17,6 +18,7 @@ import {
   handleAdminDeckFanout,
   handleAdminDeckOnboard,
 } from "@/workers/admin-deck-fanout/handler";
+import { handleSendEmail } from "@/workers/send-email/handler";
 
 const ingestionWorker = createIngestionWorker({
   "chunk-pdf": handleChunkPdf,
@@ -29,6 +31,8 @@ const adminDeckWorker = createAdminDeckWorker({
   [ADMIN_DECK_FANOUT_JOB]: handleAdminDeckFanout,
   [ADMIN_DECK_ONBOARD_JOB]: handleAdminDeckOnboard,
 });
+
+const emailWorker = createEmailWorker(handleSendEmail);
 
 if (ingestionWorker) {
   ingestionWorker.on("completed", (job) => console.log(`Ingestion job ${job.id} completed`));
@@ -45,7 +49,12 @@ if (adminDeckWorker) {
   adminDeckWorker.on("failed", (job, err) => console.error(`Admin deck job ${job?.id} failed`, err));
   console.log("Admin deck worker running.");
 }
-if (!ingestionWorker && !fsrsOptimizeWorker && !adminDeckWorker) {
+if (emailWorker) {
+  emailWorker.on("completed", (job) => console.log(`Email job ${job.id} completed`));
+  emailWorker.on("failed", (job, err) => console.error(`Email job ${job?.id} failed`, err));
+  console.log("Email worker running.");
+}
+if (!ingestionWorker && !fsrsOptimizeWorker && !adminDeckWorker && !emailWorker) {
   console.error("Redis not configured. Set REDIS_URL to run workers.");
   process.exit(1);
 }

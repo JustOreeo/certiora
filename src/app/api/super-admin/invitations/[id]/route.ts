@@ -5,6 +5,8 @@ import { prisma } from "@/lib/db";
 import { randomBytes } from "crypto";
 import { z } from "zod";
 import { ADMIN_INVITE_MAX_EXPIRY_DAYS } from "@/lib/invitation-config";
+import { addEmailJob } from "@/lib/queue";
+import { adminInvitationEmail } from "@/lib/email/templates";
 
 const resendSchema = z.object({
   expiresInDays: z.number().int().min(1).max(ADMIN_INVITE_MAX_EXPIRY_DAYS).default(7),
@@ -27,7 +29,7 @@ export async function PATCH(
 
   const invitation = await prisma.invitation.findUnique({
     where: { id: params.id },
-    select: { id: true, role: true, usedAt: true },
+    select: { id: true, role: true, usedAt: true, email: true, tenantName: true },
   });
 
   if (!invitation) {
@@ -50,6 +52,16 @@ export async function PATCH(
     data: { token: randomBytes(32).toString("hex"), expiresAt },
     select: { token: true, expiresAt: true },
   });
+
+  const inviterUser = await prisma.user.findUnique({ where: { id: session.user.id }, select: { name: true } });
+  const emailTemplate = adminInvitationEmail({
+    email: invitation.email,
+    tenantName: invitation.tenantName ?? "",
+    inviterName: inviterUser?.name ?? null,
+    token: updated.token,
+    expiresAt: updated.expiresAt,
+  });
+  await addEmailJob({ to: invitation.email, ...emailTemplate });
 
   const invitationUrl = `/accept-invitation?token=${updated.token}`;
   return NextResponse.json({ invitationUrl, token: updated.token, expiresAt: updated.expiresAt });

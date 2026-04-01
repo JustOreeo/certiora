@@ -5,18 +5,20 @@ import { prisma } from "@/lib/db";
 import { randomBytes } from "crypto";
 import { z } from "zod";
 import { STUDENT_INVITE_MAX_EXPIRY_DAYS } from "@/lib/invitation-config";
+import { addEmailJob } from "@/lib/queue";
+import { studentInvitationEmail } from "@/lib/email/templates";
 
 const resendSchema = z.object({
   expiresInDays: z.number().int().min(1).max(STUDENT_INVITE_MAX_EXPIRY_DAYS).default(30),
 });
 
 async function resolveTenantAndAssertAccess(
-  session: { role: string; tenantId?: string | null },
+  session: { role?: string; tenantId?: string | null },
   tenantSlug: string
 ) {
   const tenant = await prisma.tenant.findUnique({
     where: { slug: tenantSlug },
-    select: { id: true },
+    select: { id: true, name: true },
   });
   if (!tenant) return null;
   if (session.tenantId !== tenant.id) return null;
@@ -43,7 +45,7 @@ export async function PATCH(
 
   const invitation = await prisma.invitation.findUnique({
     where: { id: params.id },
-    select: { id: true, tenantId: true, role: true, usedAt: true },
+    select: { id: true, tenantId: true, role: true, usedAt: true, email: true },
   });
 
   if (!invitation) {
@@ -66,6 +68,16 @@ export async function PATCH(
     data: { token: randomBytes(32).toString("hex"), expiresAt },
     select: { token: true, expiresAt: true },
   });
+
+  const inviterUser = await prisma.user.findUnique({ where: { id: session.user.id }, select: { name: true } });
+  const emailTemplate = studentInvitationEmail({
+    email: invitation.email,
+    tenantName: tenant.name,
+    inviterName: inviterUser?.name ?? null,
+    token: updated.token,
+    expiresAt: updated.expiresAt,
+  });
+  await addEmailJob({ to: invitation.email, ...emailTemplate });
 
   const invitationUrl = `/accept-invitation?token=${updated.token}`;
   return NextResponse.json({ invitationUrl, token: updated.token, expiresAt: updated.expiresAt });
