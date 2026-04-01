@@ -84,7 +84,7 @@ export async function POST(request: NextRequest) {
   // Check slug not already taken
   const existingTenant = await prisma.tenant.findUnique({ where: { slug: tenantSlug } });
   if (existingTenant) {
-    return NextResponse.json({ error: "Tenant slug already taken" }, { status: 400 });
+    return NextResponse.json({ error: "This tenant slug is not available" }, { status: 400 });
   }
 
   // Check no pending invitation for same slug
@@ -93,7 +93,7 @@ export async function POST(request: NextRequest) {
   });
   if (existingInvite) {
     return NextResponse.json(
-      { error: "An active invitation already exists for this tenant slug" },
+      { error: "This tenant slug is not available" },
       { status: 400 }
     );
   }
