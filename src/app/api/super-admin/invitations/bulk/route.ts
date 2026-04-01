@@ -3,9 +3,30 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { randomBytes } from "crypto";
-import { ADMIN_INVITE_DEFAULT_EXPIRY_DAYS } from "@/lib/invitation-config";
+import { z } from "zod";
+import Papa from "papaparse";
+import { ADMIN_INVITE_DEFAULT_EXPIRY_DAYS, ADMIN_INVITE_MAX_EXPIRY_DAYS } from "@/lib/invitation-config";
 import { addEmailJob } from "@/lib/queue";
 import { adminInvitationEmail } from "@/lib/email/templates";
+
+const MAX_FILE_SIZE_BYTES = 512 * 1024; // 512 KB
+const MAX_ROWS = 500;
+
+const rowSchema = z.object({
+  email: z.string().email("Invalid email"),
+  tenantname: z.string().min(1, "tenantName is required"),
+  tenantslug: z
+    .string()
+    .min(1)
+    .regex(/^[a-z0-9-]+$/, "Slug must be lowercase alphanumeric with hyphens"),
+  expiresindays: z
+    .union([z.string(), z.number()])
+    .optional()
+    .transform((v) => {
+      const n = Number(v);
+      return isNaN(n) ? ADMIN_INVITE_DEFAULT_EXPIRY_DAYS : Math.min(Math.max(Math.round(n), 1), ADMIN_INVITE_MAX_EXPIRY_DAYS);
+    }),
+});
 
 type RowResult =
   | { status: "created"; email: string; tenantName: string; tenantSlug: string; invitationUrl: string }
@@ -23,19 +44,32 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "CSV file required" }, { status: 400 });
   }
 
-  const text = await file.text();
-  const lines = text.split(/\r?\n/).filter(Boolean);
-  if (lines.length < 2) {
-    return NextResponse.json({ error: "CSV must have a header row and at least one data row" }, { status: 400 });
+  if (file.size > MAX_FILE_SIZE_BYTES) {
+    return NextResponse.json({ error: `File too large. Maximum size is ${MAX_FILE_SIZE_BYTES / 1024} KB.` }, { status: 400 });
   }
 
-  const header = lines[0].split(",").map((h) => h.trim().toLowerCase());
-  const emailIdx = header.indexOf("email");
-  const nameIdx = header.indexOf("tenantname");
-  const slugIdx = header.indexOf("tenantslug");
-  const daysIdx = header.indexOf("expiresindays");
+  const text = await file.text();
 
-  if (emailIdx === -1 || nameIdx === -1 || slugIdx === -1) {
+  const { data: rows, errors } = Papa.parse<Record<string, string>>(text, {
+    header: true,
+    skipEmptyLines: true,
+    transformHeader: (h) => h.trim().toLowerCase(),
+  });
+
+  if (errors.length > 0 && rows.length === 0) {
+    return NextResponse.json({ error: "Failed to parse CSV. Check the file format." }, { status: 400 });
+  }
+
+  if (rows.length === 0) {
+    return NextResponse.json({ error: "CSV has no data rows." }, { status: 400 });
+  }
+
+  if (rows.length > MAX_ROWS) {
+    return NextResponse.json({ error: `Too many rows. Maximum is ${MAX_ROWS} per upload.` }, { status: 400 });
+  }
+
+  const firstRow = rows[0];
+  if (!("email" in firstRow) || !("tenantname" in firstRow) || !("tenantslug" in firstRow)) {
     return NextResponse.json(
       { error: "CSV must have columns: email, tenantName, tenantSlug (and optionally expiresInDays)" },
       { status: 400 }
@@ -45,43 +79,35 @@ export async function POST(request: NextRequest) {
   const inviterUser = await prisma.user.findUnique({ where: { id: session.user.id }, select: { name: true } });
   const results: RowResult[] = [];
 
-  for (let i = 1; i < lines.length; i++) {
-    const cols = lines[i].split(",").map((c) => c.trim());
-    const email = cols[emailIdx] ?? "";
-    const tenantName = cols[nameIdx] ?? "";
-    const tenantSlug = cols[slugIdx] ?? "";
-    const rawDays = daysIdx !== -1 ? parseInt(cols[daysIdx] ?? "", 10) : NaN;
-    const expiresInDays = isNaN(rawDays) ? ADMIN_INVITE_DEFAULT_EXPIRY_DAYS : Math.min(Math.max(rawDays, 1), 30);
-
-    if (!email || !tenantName || !tenantSlug) {
-      results.push({ status: "skipped", email, tenantSlug, reason: "Missing required field(s)" });
+  for (const row of rows) {
+    const parsed = rowSchema.safeParse(row);
+    if (!parsed.success) {
+      const firstError = parsed.error.errors[0];
+      results.push({
+        status: "skipped",
+        email: row.email ?? "",
+        tenantSlug: row.tenantslug ?? "",
+        reason: firstError.message,
+      });
       continue;
     }
 
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      results.push({ status: "skipped", email, tenantSlug, reason: "Invalid email" });
-      continue;
-    }
-
-    if (!/^[a-z0-9-]+$/.test(tenantSlug)) {
-      results.push({ status: "skipped", email, tenantSlug, reason: "Invalid slug format" });
-      continue;
-    }
+    const { email, tenantname: tenantName, tenantslug: tenantSlug, expiresindays: expiresInDays } = parsed.data;
 
     // Check slug not taken by existing tenant
     const existingTenant = await prisma.tenant.findUnique({ where: { slug: tenantSlug }, select: { id: true } });
     if (existingTenant) {
-      results.push({ status: "skipped", email, tenantSlug, reason: "Slug already taken" });
+      results.push({ status: "skipped", email, tenantSlug, reason: "This tenant slug is not available" });
       continue;
     }
 
     // Check no active pending invitation for same slug
     const existingInvite = await prisma.invitation.findFirst({
-      where: { tenantSlug, usedAt: null, expiresAt: { gt: new Date() } },
+      where: { tenantSlug, usedAt: null, revokedAt: null, expiresAt: { gt: new Date() } },
       select: { id: true },
     });
     if (existingInvite) {
-      results.push({ status: "skipped", email, tenantSlug, reason: "Active invitation already exists for this slug" });
+      results.push({ status: "skipped", email, tenantSlug, reason: "This tenant slug is not available" });
       continue;
     }
 
@@ -93,7 +119,7 @@ export async function POST(request: NextRequest) {
     }
 
     const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + expiresInDays);
+    expiresAt.setDate(expiresAt.getDate() + (expiresInDays ?? ADMIN_INVITE_DEFAULT_EXPIRY_DAYS));
 
     const invitation = await prisma.invitation.create({
       data: {
