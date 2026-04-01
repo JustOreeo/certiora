@@ -92,8 +92,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Invalid student invitation" }, { status: 400 });
     }
 
+    let newUserId: string | null = null;
     await prisma.$transaction(async (tx) => {
-      await tx.user.create({
+      const newUser = await tx.user.create({
         data: {
           email: invitation.email,
           name,
@@ -102,6 +103,7 @@ export async function POST(request: NextRequest) {
           passwordHash,
         },
       });
+      newUserId = newUser.id;
 
       await tx.invitation.update({
         where: { token },
@@ -110,12 +112,8 @@ export async function POST(request: NextRequest) {
     });
 
     // Fan-out ACTIVE admin-seeded decks to the new student (Phase 9).
-    const newUser = await prisma.user.findUnique({
-      where: { email: invitation.email },
-      select: { id: true },
-    });
-    if (newUser) {
-      addAdminDeckOnboardJob({ tenantId: invitation.tenantId!, userId: newUser.id });
+    if (newUserId) {
+      addAdminDeckOnboardJob({ tenantId: invitation.tenantId!, userId: newUserId });
     }
   } else {
     return NextResponse.json({ error: "Invalid invitation role" }, { status: 400 });
