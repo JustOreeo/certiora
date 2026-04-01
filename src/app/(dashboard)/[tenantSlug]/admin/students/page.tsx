@@ -71,6 +71,7 @@ export default function StudentsPage() {
   const [copiedRowId, setCopiedRowId] = useState<string | null>(null);
   const [revoking, setRevoking] = useState<string | null>(null);
   const [resending, setResending] = useState<string | null>(null);
+  const [confirmRevokeId, setConfirmRevokeId] = useState<string | null>(null);
   const [pendingInvites, setPendingInvites] = useState<Array<{
     id: string; email: string; token: string; expiresAt: string; usedAt: string | null; createdAt: string;
     inviter: { name: string; email: string } | null;
@@ -176,9 +177,9 @@ export default function StudentsPage() {
     setTimeout(() => setCopiedRowId(null), 2000);
   };
 
-  const revokeInvitation = async (id: string, email: string) => {
-    if (!confirm(`Revoke invitation for ${email}?`)) return;
+  const revokeInvitation = async (id: string) => {
     setRevoking(id);
+    setConfirmRevokeId(null);
     await fetch(`/api/${params.tenantSlug}/admin/invitations/${id}`, { method: "DELETE" });
     setRevoking(null);
     loadInvitations();
@@ -373,14 +374,32 @@ export default function StudentsPage() {
                               {resending === inv.id ? <Spinner /> : null}
                               {isExpired ? "Reissue" : "Extend"}
                             </button>
-                            <button
-                              onClick={() => revokeInvitation(inv.id, inv.email)}
-                              disabled={revoking === inv.id}
-                              className="inline-flex items-center gap-1 text-error hover:opacity-75 font-medium transition-opacity disabled:opacity-50"
-                            >
-                              {revoking === inv.id ? <Spinner /> : null}
-                              Revoke
-                            </button>
+                            {confirmRevokeId === inv.id ? (
+                              <span className="inline-flex items-center gap-2">
+                                <span className="text-xs text-secondary">Sure?</span>
+                                <button
+                                  onClick={() => revokeInvitation(inv.id)}
+                                  disabled={revoking === inv.id}
+                                  className="inline-flex items-center gap-1 text-error font-semibold hover:opacity-75 transition-opacity disabled:opacity-50"
+                                >
+                                  {revoking === inv.id ? <Spinner /> : null}
+                                  Yes
+                                </button>
+                                <button
+                                  onClick={() => setConfirmRevokeId(null)}
+                                  className="text-secondary hover:text-body font-medium transition-colors"
+                                >
+                                  Cancel
+                                </button>
+                              </span>
+                            ) : (
+                              <button
+                                onClick={() => setConfirmRevokeId(inv.id)}
+                                className="inline-flex items-center gap-1 text-error hover:opacity-75 font-medium transition-opacity"
+                              >
+                                Revoke
+                              </button>
+                            )}
                           </div>
                         )}
                       </td>
