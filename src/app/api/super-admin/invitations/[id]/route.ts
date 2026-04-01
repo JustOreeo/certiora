@@ -44,6 +44,10 @@ export async function PATCH(
     return NextResponse.json({ error: "Cannot resend a used invitation" }, { status: 400 });
   }
 
+  if (!invitation.tenantName) {
+    return NextResponse.json({ error: "Invalid invitation: missing tenant name" }, { status: 400 });
+  }
+
   const expiresAt = new Date();
   expiresAt.setDate(expiresAt.getDate() + parsed.data.expiresInDays);
 
@@ -56,7 +60,7 @@ export async function PATCH(
   const inviterUser = await prisma.user.findUnique({ where: { id: session.user.id }, select: { name: true } });
   const emailTemplate = adminInvitationEmail({
     email: invitation.email,
-    tenantName: invitation.tenantName ?? "",
+    tenantName: invitation.tenantName,
     inviterName: inviterUser?.name ?? null,
     token: updated.token,
     expiresAt: updated.expiresAt,
