@@ -640,6 +640,10 @@ model Invitation {
   @@index([token])
   @@index([tenantId])
   @@index([email])
+  // Composite index for active-invitation lookups (POST /invitations checks email+tenantId for duplicates).
+  // A partial unique constraint (email, tenantId WHERE usedAt IS NULL AND revokedAt IS NULL) would be ideal
+  // but Prisma doesn't support filtered unique indexes — uniqueness is enforced at the application layer.
+  @@index([email, tenantId])
 }
 
 // ——— Analytics (optional materialized) ———
