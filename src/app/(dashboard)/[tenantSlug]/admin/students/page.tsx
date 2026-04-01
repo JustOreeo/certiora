@@ -70,6 +70,7 @@ export default function StudentsPage() {
   const [copied, setCopied] = useState(false);
   const [copiedRowId, setCopiedRowId] = useState<string | null>(null);
   const [revoking, setRevoking] = useState<string | null>(null);
+  const [resending, setResending] = useState<string | null>(null);
   const [pendingInvites, setPendingInvites] = useState<Array<{
     id: string; email: string; token: string; expiresAt: string; usedAt: string | null; createdAt: string;
     inviter: { name: string; email: string } | null;
@@ -180,6 +181,21 @@ export default function StudentsPage() {
     setRevoking(id);
     await fetch(`/api/${params.tenantSlug}/admin/invitations/${id}`, { method: "DELETE" });
     setRevoking(null);
+    loadInvitations();
+  };
+
+  const resendInvitation = async (id: string) => {
+    setResending(id);
+    const res = await fetch(`/api/${params.tenantSlug}/admin/invitations/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ expiresInDays: 30 }),
+    });
+    const data = await res.json();
+    if (res.ok) {
+      setInviteLink(`${window.location.origin}${data.invitationUrl}`);
+    }
+    setResending(null);
     loadInvitations();
   };
 
@@ -338,14 +354,24 @@ export default function StudentsPage() {
                         )}
                       </td>
                       <td className="px-5 py-3.5 text-sm">
-                        {isPending && (
+                        {!inv.usedAt && (
                           <div className="flex items-center gap-3">
+                            {isPending && (
+                              <button
+                                onClick={() => copyRowLink(inv)}
+                                className="inline-flex items-center gap-1.5 text-secondary hover:text-body font-medium transition-colors"
+                              >
+                                <IconCopy />
+                                {copiedRowId === inv.id ? "Copied!" : "Copy link"}
+                              </button>
+                            )}
                             <button
-                              onClick={() => copyRowLink(inv)}
-                              className="inline-flex items-center gap-1.5 text-secondary hover:text-body font-medium transition-colors"
+                              onClick={() => resendInvitation(inv.id)}
+                              disabled={resending === inv.id}
+                              className="inline-flex items-center gap-1 text-primary hover:opacity-75 font-medium transition-opacity disabled:opacity-50"
                             >
-                              <IconCopy />
-                              {copiedRowId === inv.id ? "Copied!" : "Copy link"}
+                              {resending === inv.id ? <Spinner /> : null}
+                              {isExpired ? "Reissue" : "Extend"}
                             </button>
                             <button
                               onClick={() => revokeInvitation(inv.id, inv.email)}
