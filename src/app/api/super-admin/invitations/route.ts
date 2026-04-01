@@ -5,6 +5,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { z } from "zod";
 import { randomBytes } from "crypto";
+import { ADMIN_INVITE_DEFAULT_EXPIRY_DAYS, ADMIN_INVITE_MAX_EXPIRY_DAYS } from "@/lib/invitation-config";
 
 function requireSuperAdmin(session: Session | null) {
   if (!session || session.role !== "SUPER_ADMIN") {
@@ -20,7 +21,7 @@ const createSchema = z.object({
     .string()
     .min(1)
     .regex(/^[a-z0-9-]+$/, "Slug must be lowercase alphanumeric with hyphens"),
-  expiresInDays: z.number().int().min(1).max(30).default(7),
+  expiresInDays: z.number().int().min(1).max(ADMIN_INVITE_MAX_EXPIRY_DAYS).default(ADMIN_INVITE_DEFAULT_EXPIRY_DAYS),
 });
 
 export async function GET() {

@@ -4,10 +4,11 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { z } from "zod";
 import { randomBytes } from "crypto";
+import { STUDENT_INVITE_DEFAULT_EXPIRY_DAYS, STUDENT_INVITE_MAX_EXPIRY_DAYS } from "@/lib/invitation-config";
 
 const schema = z.object({
   email: z.string().email("Valid email required"),
-  expiresInDays: z.number().int().min(1).max(90).default(30),
+  expiresInDays: z.number().int().min(1).max(STUDENT_INVITE_MAX_EXPIRY_DAYS).default(STUDENT_INVITE_DEFAULT_EXPIRY_DAYS),
 });
 
 export async function GET(
