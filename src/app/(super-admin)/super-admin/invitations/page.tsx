@@ -9,6 +9,7 @@ type Invitation = {
   tenantName: string | null;
   tenantSlug: string | null;
   tenantId: string | null;
+  token: string;
   expiresAt: string;
   usedAt: string | null;
   createdAt: string;
@@ -71,6 +72,7 @@ export default function InvitationsPage() {
   const [formError, setFormError] = useState("");
   const [generatedLink, setGeneratedLink] = useState("");
   const [copied, setCopied] = useState(false);
+  const [copiedRowId, setCopiedRowId] = useState<string | null>(null);
 
   const loadInvitations = () => {
     fetch("/api/super-admin/invitations")
@@ -115,6 +117,13 @@ export default function InvitationsPage() {
     await navigator.clipboard.writeText(generatedLink);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const copyRowLink = async (inv: Invitation) => {
+    const url = `${window.location.origin}/accept-invitation?token=${inv.token}`;
+    await navigator.clipboard.writeText(url);
+    setCopiedRowId(inv.id);
+    setTimeout(() => setCopiedRowId(null), 2000);
   };
 
   return (
@@ -274,17 +283,28 @@ export default function InvitationsPage() {
                       {new Date(inv.createdAt).toLocaleDateString()}
                     </td>
                     <td className="px-5 py-3.5 text-sm">
-                      {inv.usedAt && inv.tenantId ? (
-                        <Link
-                          href={`/super-admin/tenants/${inv.tenantId}`}
-                          className="inline-flex items-center gap-1 text-primary hover:text-primary-hover font-medium transition-colors"
-                        >
-                          View tenant
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="m9 18 6-6-6-6" />
-                          </svg>
-                        </Link>
-                      ) : null}
+                      <div className="flex items-center gap-3">
+                        {!inv.usedAt && new Date(inv.expiresAt) >= new Date() && (
+                          <button
+                            onClick={() => copyRowLink(inv)}
+                            className="inline-flex items-center gap-1.5 text-secondary hover:text-body font-medium transition-colors"
+                          >
+                            <IconCopy />
+                            {copiedRowId === inv.id ? "Copied!" : "Copy link"}
+                          </button>
+                        )}
+                        {inv.usedAt && inv.tenantId && (
+                          <Link
+                            href={`/super-admin/tenants/${inv.tenantId}`}
+                            className="inline-flex items-center gap-1 text-primary hover:text-primary-hover font-medium transition-colors"
+                          >
+                            View tenant
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="m9 18 6-6-6-6" />
+                            </svg>
+                          </Link>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}

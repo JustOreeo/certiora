@@ -37,6 +37,7 @@ export async function GET() {
       tenantName: true,
       tenantSlug: true,
       tenantId: true,
+      token: true,
       expiresAt: true,
       usedAt: true,
       createdAt: true,
