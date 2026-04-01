@@ -3,12 +3,14 @@ import { prisma } from "@/lib/db";
 import { invitationRatelimit } from "@/lib/ratelimit";
 
 export async function GET(request: NextRequest) {
+  const ip = request.headers.get("x-forwarded-for") ?? "anonymous";
   if (invitationRatelimit) {
-    const ip = request.headers.get("x-forwarded-for") ?? "anonymous";
     const { success } = await invitationRatelimit.limit(ip);
     if (!success) {
       return NextResponse.json({ error: "Too many requests. Please try again later." }, { status: 429 });
     }
+  } else {
+    console.warn(`[ratelimit] invitation GET bypassed for ip=${ip}`);
   }
 
   const token = request.nextUrl.searchParams.get("token");

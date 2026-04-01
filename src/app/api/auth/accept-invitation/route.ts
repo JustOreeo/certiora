@@ -13,12 +13,14 @@ const schema = z.object({
 });
 
 export async function POST(request: NextRequest) {
+  const ip = request.headers.get("x-forwarded-for") ?? "anonymous";
   if (invitationRatelimit) {
-    const ip = request.headers.get("x-forwarded-for") ?? "anonymous";
     const { success } = await invitationRatelimit.limit(ip);
     if (!success) {
       return NextResponse.json({ error: "Too many requests. Please try again later." }, { status: 429 });
     }
+  } else {
+    console.warn(`[ratelimit] invitation POST bypassed for ip=${ip}`);
   }
 
   const body = await request.json();
