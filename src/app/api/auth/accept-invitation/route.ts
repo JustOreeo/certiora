@@ -84,7 +84,7 @@ export async function POST(request: NextRequest) {
 
       await tx.invitation.update({
         where: { token },
-        data: { usedAt: new Date() },
+        data: { usedAt: new Date(), tenantId: tenant.id },
       });
     });
   } else if (invitation.role === "STUDENT") {
