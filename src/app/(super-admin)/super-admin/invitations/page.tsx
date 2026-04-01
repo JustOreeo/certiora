@@ -90,15 +90,17 @@ export default function InvitationsPage() {
   const [confirmRevokeId, setConfirmRevokeId] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const showToast = useCallback((msg: string) => { setToast(msg); }, []);
+  const [loadError, setLoadError] = useState(false);
   const [bulkUploading, setBulkUploading] = useState(false);
   const [bulkResult, setBulkResult] = useState<{ created: number; skipped: number; results: Array<{ status: string; email: string; tenantSlug: string; invitationUrl?: string; reason?: string }> } | null>(null);
   const bulkFileRef = useRef<HTMLInputElement>(null);
 
   const loadInvitations = () => {
+    setLoadError(false);
     fetch("/api/super-admin/invitations")
       .then((r) => r.json())
       .then((data) => { setInvitations(data); setLoading(false); })
-      .catch(() => setLoading(false));
+      .catch(() => { setLoadError(true); setLoading(false); });
   };
 
   useEffect(() => { loadInvitations(); }, []);
@@ -343,7 +345,14 @@ export default function InvitationsPage() {
             <span className="text-secondary font-normal">({invitations.length})</span>
           </h2>
         </div>
-        {loading ? (
+        {loadError ? (
+          <div className="px-5 py-8 text-center">
+            <p className="text-sm text-error mb-3">Failed to load invitations.</p>
+            <button onClick={loadInvitations} className="text-sm font-medium text-primary hover:underline">
+              Try again
+            </button>
+          </div>
+        ) : loading ? (
           <div className="flex items-center justify-center h-32">
             <Spinner />
           </div>

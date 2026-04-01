@@ -75,6 +75,7 @@ export default function StudentsPage() {
   const [confirmRevokeId, setConfirmRevokeId] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const showToast = useCallback((msg: string) => { setToast(msg); }, []);
+  const [inviteLoadError, setInviteLoadError] = useState(false);
   const [pendingInvites, setPendingInvites] = useState<Array<{
     id: string; email: string; token: string; expiresAt: string; usedAt: string | null; createdAt: string;
     inviter: { name: string; email: string } | null;
@@ -103,12 +104,15 @@ export default function StudentsPage() {
   };
 
   const loadInvitations = async () => {
+    setInviteLoadError(false);
     try {
       const res = await fetch(`/api/${params.tenantSlug}/admin/invitations`);
+      if (!res.ok) throw new Error("Failed to load");
       const data = await res.json();
       setPendingInvites(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error("Failed to load invitations:", error);
+      setInviteLoadError(true);
     }
   };
 
@@ -318,7 +322,15 @@ export default function StudentsPage() {
       </div>
 
       {/* Pending invitations */}
-      {pendingInvites.length > 0 && (
+      {inviteLoadError && (
+        <div className="bg-error-bg border border-error-border rounded-xl px-5 py-3 mb-5 flex items-center justify-between">
+          <p className="text-sm text-error">Failed to load invitations.</p>
+          <button onClick={loadInvitations} className="text-sm font-medium text-error underline hover:no-underline">
+            Retry
+          </button>
+        </div>
+      )}
+      {!inviteLoadError && pendingInvites.length > 0 && (
         <div className="bg-surface-card border border-border rounded-xl shadow-sm mb-5">
           <div className="px-5 py-4 border-b border-border-subtle">
             <h2 className="text-sm font-semibold text-heading">
