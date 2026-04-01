@@ -63,6 +63,7 @@ export default function StudentsPage() {
     Array<{ studentId: string; name: string; username: string; password: string }>
   >([]);
   const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteExpiresInDays, setInviteExpiresInDays] = useState(30);
   const [inviting, setInviting] = useState(false);
   const [inviteLink, setInviteLink] = useState("");
   const [inviteError, setInviteError] = useState("");
@@ -142,7 +143,7 @@ export default function StudentsPage() {
     const res = await fetch(`/api/${params.tenantSlug}/admin/invitations`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: inviteEmail }),
+      body: JSON.stringify({ email: inviteEmail, expiresInDays: inviteExpiresInDays }),
     });
 
     const data = await res.json();
@@ -261,6 +262,15 @@ export default function StudentsPage() {
               onChange={(e) => setInviteEmail(e.target.value)}
               placeholder="student@example.com"
               className="flex-1 h-10 px-3 text-sm border border-border rounded-lg bg-surface-card text-body placeholder:text-muted focus:outline-none focus:border-border-focus transition-colors"
+            />
+            <input
+              type="number"
+              min={1}
+              max={90}
+              value={inviteExpiresInDays}
+              onChange={(e) => setInviteExpiresInDays(Number(e.target.value))}
+              title="Expires in (days)"
+              className="w-20 h-10 px-3 text-sm border border-border rounded-lg bg-surface-card text-body focus:outline-none focus:border-border-focus transition-colors"
             />
             <button
               type="submit"
