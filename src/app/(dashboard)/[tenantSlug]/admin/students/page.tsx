@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
 import { toUserMessage } from "@/lib/errors";
+import { Toast } from "@/components/ui/Toast";
 
 type Student = {
   id: string;
@@ -63,10 +64,22 @@ export default function StudentsPage() {
     Array<{ studentId: string; name: string; username: string; password: string }>
   >([]);
   const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteExpiresInDays, setInviteExpiresInDays] = useState(30);
   const [inviting, setInviting] = useState(false);
   const [inviteLink, setInviteLink] = useState("");
   const [inviteError, setInviteError] = useState("");
   const [copied, setCopied] = useState(false);
+  const [copiedRowId, setCopiedRowId] = useState<string | null>(null);
+  const [revoking, setRevoking] = useState<string | null>(null);
+  const [resending, setResending] = useState<string | null>(null);
+  const [confirmRevokeId, setConfirmRevokeId] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+  const showToast = useCallback((msg: string) => { setToast(msg); }, []);
+  const [inviteLoadError, setInviteLoadError] = useState(false);
+  const [pendingInvites, setPendingInvites] = useState<Array<{
+    id: string; email: string; token: string; expiresAt: string; usedAt: string | null; revokedAt: string | null; createdAt: string;
+    inviter: { name: string; email: string } | null;
+  }>>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -74,6 +87,7 @@ export default function StudentsPage() {
       router.push("/login");
     } else if (status === "authenticated") {
       loadStudents();
+      loadInvitations();
     }
   }, [status, router]);
 
@@ -86,6 +100,19 @@ export default function StudentsPage() {
       console.error("Failed to load students:", error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadInvitations = async () => {
+    setInviteLoadError(false);
+    try {
+      const res = await fetch(`/api/${params.tenantSlug}/admin/invitations`);
+      if (!res.ok) throw new Error("Failed to load");
+      const data = await res.json();
+      setPendingInvites(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error("Failed to load invitations:", error);
+      setInviteLoadError(true);
     }
   };
 
@@ -127,7 +154,7 @@ export default function StudentsPage() {
     const res = await fetch(`/api/${params.tenantSlug}/admin/invitations`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: inviteEmail }),
+      body: JSON.stringify({ email: inviteEmail, expiresInDays: inviteExpiresInDays }),
     });
 
     const data = await res.json();
@@ -140,13 +167,47 @@ export default function StudentsPage() {
 
     setInviteLink(`${window.location.origin}${data.invitationUrl}`);
     setInviteEmail("");
+    showToast("Invitation sent");
     setInviting(false);
+    loadInvitations();
   };
 
   const copyLink = async () => {
     await navigator.clipboard.writeText(inviteLink);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const copyRowLink = async (inv: { id: string; token: string }) => {
+    const url = `${window.location.origin}/accept-invitation?token=${inv.token}`;
+    await navigator.clipboard.writeText(url);
+    setCopiedRowId(inv.id);
+    setTimeout(() => setCopiedRowId(null), 2000);
+  };
+
+  const revokeInvitation = async (id: string) => {
+    setRevoking(id);
+    setConfirmRevokeId(null);
+    await fetch(`/api/${params.tenantSlug}/admin/invitations/${id}`, { method: "DELETE" });
+    setRevoking(null);
+    showToast("Invitation revoked");
+    loadInvitations();
+  };
+
+  const resendInvitation = async (id: string) => {
+    setResending(id);
+    const res = await fetch(`/api/${params.tenantSlug}/admin/invitations/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ expiresInDays: inviteExpiresInDays }),
+    });
+    const data = await res.json();
+    if (res.ok) {
+      setInviteLink(`${window.location.origin}${data.invitationUrl}`);
+      showToast("Invitation extended — new link ready");
+    }
+    setResending(null);
+    loadInvitations();
   };
 
   const downloadCredentials = () => {
@@ -173,6 +234,7 @@ export default function StudentsPage() {
 
   return (
     <div className="px-8 py-8">
+      {toast && <Toast message={toast} onDismiss={() => setToast(null)} />}
       {/* Page header */}
       <div className="flex items-center justify-between mb-7">
         <div>
@@ -239,6 +301,15 @@ export default function StudentsPage() {
               placeholder="student@example.com"
               className="flex-1 h-10 px-3 text-sm border border-border rounded-lg bg-surface-card text-body placeholder:text-muted focus:outline-none focus:border-border-focus transition-colors"
             />
+            <input
+              type="number"
+              min={1}
+              max={90}
+              value={inviteExpiresInDays}
+              onChange={(e) => setInviteExpiresInDays(Number(e.target.value))}
+              title="Expires in (days)"
+              className="w-20 h-10 px-3 text-sm border border-border rounded-lg bg-surface-card text-body focus:outline-none focus:border-border-focus transition-colors"
+            />
             <button
               type="submit"
               disabled={inviting}
@@ -249,6 +320,118 @@ export default function StudentsPage() {
           </form>
         </div>
       </div>
+
+      {/* Pending invitations */}
+      {inviteLoadError && (
+        <div className="bg-error-bg border border-error-border rounded-xl px-5 py-3 mb-5 flex items-center justify-between">
+          <p className="text-sm text-error">Failed to load invitations.</p>
+          <button onClick={loadInvitations} className="text-sm font-medium text-error underline hover:no-underline">
+            Retry
+          </button>
+        </div>
+      )}
+      {!inviteLoadError && pendingInvites.length > 0 && (
+        <div className="bg-surface-card border border-border rounded-xl shadow-sm mb-5">
+          <div className="px-5 py-4 border-b border-border-subtle">
+            <h2 className="text-sm font-semibold text-heading">
+              Pending invitations{" "}
+              <span className="text-secondary font-normal">({pendingInvites.filter(i => !i.usedAt && new Date(i.expiresAt) >= new Date()).length})</span>
+            </h2>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-border-subtle">
+                  <th className="px-5 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wide">Email</th>
+                  <th className="px-5 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wide">Status</th>
+                  <th className="px-5 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wide">Expires</th>
+                  <th className="px-5 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wide">Invited by</th>
+                  <th className="px-5 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wide" />
+                </tr>
+              </thead>
+              <tbody>
+                {pendingInvites.map((inv, i) => {
+                  const isExpired = new Date(inv.expiresAt) < new Date();
+                  const isPending = !inv.usedAt && !inv.revokedAt && !isExpired;
+                  return (
+                    <tr key={inv.id} className={`${i > 0 ? "border-t border-border-subtle" : ""} hover:bg-surface-base transition-colors`}>
+                      <td className="px-5 py-3.5 text-sm text-body">{inv.email}</td>
+                      <td className="px-5 py-3.5">
+                        {inv.revokedAt ? (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border bg-error-bg text-error border-error-border">Revoked</span>
+                        ) : inv.usedAt ? (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border bg-success-bg text-success border-success-border">Used</span>
+                        ) : isExpired ? (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border bg-error-bg text-error border-error-border">Expired</span>
+                        ) : (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border bg-warning-bg text-warning border-warning-border">Pending</span>
+                        )}
+                      </td>
+                      <td className="px-5 py-3.5 text-sm text-secondary">{new Date(inv.expiresAt).toLocaleDateString()}</td>
+                      <td className="px-5 py-3.5 text-sm text-secondary">
+                        {inv.inviter ? (
+                          <span title={inv.inviter.email}>{inv.inviter.name}</span>
+                        ) : (
+                          <span className="text-muted">—</span>
+                        )}
+                      </td>
+                      <td className="px-5 py-3.5 text-sm">
+                        {!inv.usedAt && !inv.revokedAt && (
+                          <div className="flex items-center gap-3">
+                            {isPending && (
+                              <button
+                                onClick={() => copyRowLink(inv)}
+                                className="inline-flex items-center gap-1.5 text-secondary hover:text-body font-medium transition-colors"
+                              >
+                                <IconCopy />
+                                {copiedRowId === inv.id ? "Copied!" : "Copy link"}
+                              </button>
+                            )}
+                            <button
+                              onClick={() => resendInvitation(inv.id)}
+                              disabled={resending === inv.id}
+                              className="inline-flex items-center gap-1 text-primary hover:opacity-75 font-medium transition-opacity disabled:opacity-50"
+                            >
+                              {resending === inv.id ? <Spinner /> : null}
+                              {isExpired ? "Reissue" : "Extend"}
+                            </button>
+                            {confirmRevokeId === inv.id ? (
+                              <span className="inline-flex items-center gap-2">
+                                <span className="text-xs text-secondary">Sure?</span>
+                                <button
+                                  onClick={() => revokeInvitation(inv.id)}
+                                  disabled={revoking === inv.id}
+                                  className="inline-flex items-center gap-1 text-error font-semibold hover:opacity-75 transition-opacity disabled:opacity-50"
+                                >
+                                  {revoking === inv.id ? <Spinner /> : null}
+                                  Yes
+                                </button>
+                                <button
+                                  onClick={() => setConfirmRevokeId(null)}
+                                  className="text-secondary hover:text-body font-medium transition-colors"
+                                >
+                                  Cancel
+                                </button>
+                              </span>
+                            ) : (
+                              <button
+                                onClick={() => setConfirmRevokeId(inv.id)}
+                                className="inline-flex items-center gap-1 text-error hover:opacity-75 font-medium transition-opacity"
+                              >
+                                Revoke
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Generated credentials (after CSV upload) */}
       {credentials.length > 0 && (

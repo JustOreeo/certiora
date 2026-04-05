@@ -4,11 +4,54 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { z } from "zod";
 import { randomBytes } from "crypto";
+import { STUDENT_INVITE_DEFAULT_EXPIRY_DAYS, STUDENT_INVITE_MAX_EXPIRY_DAYS } from "@/lib/invitation-config";
+import { addEmailJob } from "@/lib/queue";
+import { studentInvitationEmail } from "@/lib/email/templates";
 
 const schema = z.object({
   email: z.string().email("Valid email required"),
-  expiresInDays: z.number().int().min(1).max(90).default(30),
+  expiresInDays: z.number().int().min(1).max(STUDENT_INVITE_MAX_EXPIRY_DAYS).default(STUDENT_INVITE_DEFAULT_EXPIRY_DAYS),
 });
+
+export async function GET(
+  _request: NextRequest,
+  { params }: { params: { tenantSlug: string } }
+) {
+  const session = await getServerSession(authOptions);
+  if (!session || (session.role !== "ADMIN" && session.role !== "INSTRUCTOR")) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const tenant = await prisma.tenant.findUnique({
+    where: { slug: params.tenantSlug },
+    select: { id: true },
+  });
+
+  if (!tenant) {
+    return NextResponse.json({ error: "Tenant not found" }, { status: 404 });
+  }
+
+  if (session.tenantId !== tenant.id) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const invitations = await prisma.invitation.findMany({
+    where: { tenantId: tenant.id, role: "STUDENT" },
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      email: true,
+      token: true,
+      expiresAt: true,
+      usedAt: true,
+      revokedAt: true,
+      createdAt: true,
+      inviter: { select: { name: true, email: true } },
+    },
+  });
+
+  return NextResponse.json(invitations);
+}
 
 export async function POST(
   request: NextRequest,
@@ -21,7 +64,7 @@ export async function POST(
 
   const tenant = await prisma.tenant.findUnique({
     where: { slug: params.tenantSlug },
-    select: { id: true },
+    select: { id: true, name: true },
   });
 
   if (!tenant) {
@@ -53,6 +96,7 @@ export async function POST(
       email,
       tenantId: tenant.id,
       usedAt: null,
+      revokedAt: null,
       expiresAt: { gt: new Date() },
     },
   });
@@ -78,6 +122,16 @@ export async function POST(
   });
 
   const invitationUrl = `/accept-invitation?token=${invitation.token}`;
+
+  const inviterUser = await prisma.user.findUnique({ where: { id: session.user.id }, select: { name: true } });
+  const emailTemplate = studentInvitationEmail({
+    email,
+    tenantName: tenant.name,
+    inviterName: inviterUser?.name ?? null,
+    token: invitation.token,
+    expiresAt,
+  });
+  await addEmailJob({ to: email, ...emailTemplate });
 
   return NextResponse.json({ invitationUrl, token: invitation.token }, { status: 201 });
 }

@@ -256,8 +256,8 @@ export default function AcceptInvitationPage() {
             <input
               type={showPassword ? "text" : "password"}
               required
-              minLength={8}
-              placeholder="Password (min. 8 characters)"
+              minLength={10}
+              placeholder="Password (min. 10 characters)"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className={`${inputClass} pr-11`}
