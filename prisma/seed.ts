@@ -4,6 +4,12 @@ import { seedTenantFsrsParams } from "../src/lib/fsrs";
 
 const prisma = new PrismaClient();
 
+const SUPER_ADMIN = {
+  email: process.env.SUPER_ADMIN_EMAIL ?? "superadmin@certiora.com",
+  password: process.env.SUPER_ADMIN_PASSWORD ?? "SuperAdmin123!",
+  name: "Super Admin",
+};
+
 const TEST_TENANTS = [
   { name: "Review Center 1", slug: "review-center-1" },
   { name: "Review Center 2", slug: "review-center-2" },
@@ -11,32 +17,20 @@ const TEST_TENANTS = [
 ];
 
 async function seedSuperAdmin() {
-  const email = process.env.SUPER_ADMIN_EMAIL;
-  const password = process.env.SUPER_ADMIN_PASSWORD;
-
-  if (!email || !password) {
-    throw new Error("SUPER_ADMIN_EMAIL and SUPER_ADMIN_PASSWORD must be set");
-  }
-
   const existing = await prisma.user.findFirst({ where: { role: "SUPER_ADMIN" } });
   if (existing) {
     console.log("Super admin already exists:", existing.email);
     return;
   }
 
-  const passwordHash = await hash(password, 10);
+  const passwordHash = await hash(SUPER_ADMIN.password, 10);
   const user = await prisma.user.create({
-    data: { email, name: "Super Admin", role: "SUPER_ADMIN", passwordHash, tenantId: null },
+    data: { email: SUPER_ADMIN.email, name: SUPER_ADMIN.name, role: "SUPER_ADMIN", passwordHash, tenantId: null },
   });
   console.log("Super admin created:", user.email);
 }
 
 async function seedTestTenants() {
-  if (process.env.NODE_ENV !== "development") {
-    console.log("Skipping test tenant seeding in non-development environment");
-    return;
-  }
-
   const adminPassword = await hash("Admin123!", 10);
   const studentPassword = await hash("Student123!", 10);
 

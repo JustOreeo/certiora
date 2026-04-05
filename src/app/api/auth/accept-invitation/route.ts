@@ -5,20 +5,24 @@ import { addAdminDeckOnboardJob } from "@/lib/queue";
 import { hash } from "bcryptjs";
 import { z } from "zod";
 import { invitationRatelimit } from "@/lib/ratelimit";
+import { addEmailJob } from "@/lib/queue";
+import { welcomeEmail } from "@/lib/email/templates";
 
 const schema = z.object({
   token: z.string().min(1),
   name: z.string().min(1, "Name is required"),
-  password: z.string().min(8, "Password must be at least 8 characters"),
+  password: z.string().min(10, "Password must be at least 10 characters"),
 });
 
 export async function POST(request: NextRequest) {
+  const ip = request.headers.get("x-forwarded-for") ?? "anonymous";
   if (invitationRatelimit) {
-    const ip = request.headers.get("x-forwarded-for") ?? "anonymous";
     const { success } = await invitationRatelimit.limit(ip);
     if (!success) {
       return NextResponse.json({ error: "Too many requests. Please try again later." }, { status: 429 });
     }
+  } else {
+    console.warn(`[ratelimit] invitation POST bypassed for ip=${ip}`);
   }
 
   const body = await request.json();
@@ -56,44 +60,46 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Invalid admin invitation" }, { status: 400 });
     }
 
-    const existingTenant = await prisma.tenant.findUnique({
-      where: { slug: invitation.tenantSlug },
-    });
-    if (existingTenant) {
-      return NextResponse.json({ error: "Tenant slug already taken" }, { status: 400 });
+    try {
+      await prisma.$transaction(async (tx) => {
+        const tenant = await tx.tenant.create({
+          data: { slug: invitation.tenantSlug!, name: invitation.tenantName! },
+        });
+
+        await tx.fsrsParams.create({
+          data: seedTenantFsrsParams(tenant.id),
+        });
+
+        await tx.user.create({
+          data: {
+            email: invitation.email,
+            name,
+            role: "ADMIN",
+            tenantId: tenant.id,
+            passwordHash,
+          },
+        });
+
+        await tx.invitation.update({
+          where: { token },
+          data: { usedAt: new Date(), tenantId: tenant.id },
+        });
+      });
+    } catch (e: unknown) {
+      const code = (e as { code?: string })?.code;
+      if (code === "P2002") {
+        return NextResponse.json({ error: "Tenant slug already taken" }, { status: 409 });
+      }
+      throw e;
     }
-
-    await prisma.$transaction(async (tx) => {
-      const tenant = await tx.tenant.create({
-        data: { slug: invitation.tenantSlug!, name: invitation.tenantName! },
-      });
-
-      await tx.fsrsParams.create({
-        data: seedTenantFsrsParams(tenant.id),
-      });
-
-      await tx.user.create({
-        data: {
-          email: invitation.email,
-          name,
-          role: "ADMIN",
-          tenantId: tenant.id,
-          passwordHash,
-        },
-      });
-
-      await tx.invitation.update({
-        where: { token },
-        data: { usedAt: new Date() },
-      });
-    });
   } else if (invitation.role === "STUDENT") {
     if (!invitation.tenantId) {
       return NextResponse.json({ error: "Invalid student invitation" }, { status: 400 });
     }
 
+    let newUserId: string | null = null;
     await prisma.$transaction(async (tx) => {
-      await tx.user.create({
+      const newUser = await tx.user.create({
         data: {
           email: invitation.email,
           name,
@@ -102,6 +108,7 @@ export async function POST(request: NextRequest) {
           passwordHash,
         },
       });
+      newUserId = newUser.id;
 
       await tx.invitation.update({
         where: { token },
@@ -110,16 +117,32 @@ export async function POST(request: NextRequest) {
     });
 
     // Fan-out ACTIVE admin-seeded decks to the new student (Phase 9).
-    const newUser = await prisma.user.findUnique({
-      where: { email: invitation.email },
-      select: { id: true },
-    });
-    if (newUser) {
-      addAdminDeckOnboardJob({ tenantId: invitation.tenantId!, userId: newUser.id });
+    // Runs outside the transaction; log on failure so it can be retried manually.
+    if (newUserId) {
+      try {
+        await addAdminDeckOnboardJob({ tenantId: invitation.tenantId!, userId: newUserId });
+      } catch (err) {
+        console.error(`[accept-invitation] Failed to enqueue deck onboard job for user=${newUserId}:`, err);
+      }
     }
   } else {
     return NextResponse.json({ error: "Invalid invitation role" }, { status: 400 });
   }
+
+  // Send welcome email after successful account creation
+  let tenantName: string | null = null;
+  if (invitation.tenantName) {
+    tenantName = invitation.tenantName;
+  } else if (invitation.tenantId) {
+    const tenant = await prisma.tenant.findUnique({ where: { id: invitation.tenantId }, select: { name: true } });
+    tenantName = tenant?.name ?? null;
+  }
+  const emailTemplate = welcomeEmail({
+    name,
+    role: invitation.role as "ADMIN" | "STUDENT",
+    tenantName,
+  });
+  await addEmailJob({ to: invitation.email, ...emailTemplate });
 
   return NextResponse.json({ success: true });
 }

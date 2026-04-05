@@ -626,18 +626,24 @@ model Invitation {
   tenantId   String?   // null for ADMIN invitations (tenant created on acceptance)
   tenantName String?   // for ADMIN invitations
   tenantSlug String?   // for ADMIN invitations
-  invitedBy  String
+  invitedBy  String?   // nullable: preserved as audit trail if inviter is deleted
   expiresAt  DateTime
   usedAt     DateTime? // null = available; set = consumed (one-time only)
+  revokedAt  DateTime? // set on soft-delete revoke
+  revokedBy  String?   // userId who revoked the invitation
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
 
-  tenant  Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  inviter User    @relation("SentInvitations", fields: [invitedBy], references: [id], onDelete: Cascade)
+  tenant  Tenant? @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  inviter User?   @relation("SentInvitations", fields: [invitedBy], references: [id], onDelete: SetNull)
 
   @@index([token])
   @@index([tenantId])
   @@index([email])
+  // Composite index for active-invitation lookups (POST /invitations checks email+tenantId for duplicates).
+  // A partial unique constraint (email, tenantId WHERE usedAt IS NULL AND revokedAt IS NULL) would be ideal
+  // but Prisma doesn't support filtered unique indexes — uniqueness is enforced at the application layer.
+  @@index([email, tenantId])
 }
 
 // ——— Analytics (optional materialized) ———

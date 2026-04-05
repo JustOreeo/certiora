@@ -1,5 +1,6 @@
 import { Queue, Worker, type Job } from "bullmq";
 import { config } from "@/config/env";
+import type { SendEmailOptions } from "@/lib/email";
 
 const connection = config.redisUrl
   ? { connection: { host: new URL(config.redisUrl).hostname, port: parseInt(new URL(config.redisUrl).port || "6379", 10) } }
@@ -110,6 +111,38 @@ export async function isFsrsOptimizeJobQueuedOrActive(userId: string): Promise<b
   const waiting = await fsrsOptimizeQueue.getJobs(["waiting"]);
   const active = await fsrsOptimizeQueue.getJobs(["active"]);
   return [...waiting, ...active].some((job) => job.data?.userId === userId);
+}
+
+// ——— Email queue ———
+
+export const EMAIL_JOB = "send-email" as const;
+
+export const emailQueue =
+  connection &&
+  new Queue("email", {
+    ...connection,
+    defaultJobOptions: { attempts: 3, backoff: { type: "exponential", delay: 2000 } },
+  });
+
+export function addEmailJob(payload: SendEmailOptions) {
+  if (!emailQueue) {
+    console.warn(`[email-queue] Skipped email to ${payload.to} — Redis not configured`);
+    return Promise.resolve(undefined);
+  }
+  return emailQueue.add(EMAIL_JOB, payload);
+}
+
+export function createEmailWorker(
+  processor: (job: Job<SendEmailOptions>) => Promise<void>
+): Worker | null {
+  if (!connection) return null;
+  return new Worker(
+    "email",
+    async (job: Job<SendEmailOptions>) => {
+      if (job.name === EMAIL_JOB) await processor(job);
+    },
+    connection
+  );
 }
 
 export type ChunkPdfJobPayload = { sourceMaterialId: string; tenantId: string };

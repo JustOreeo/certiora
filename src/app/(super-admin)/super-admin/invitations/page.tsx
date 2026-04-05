@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { Toast } from "@/components/ui/Toast";
 
 type Invitation = {
   id: string;
@@ -9,9 +10,12 @@ type Invitation = {
   tenantName: string | null;
   tenantSlug: string | null;
   tenantId: string | null;
+  token: string;
   expiresAt: string;
   usedAt: string | null;
+  revokedAt: string | null;
   createdAt: string;
+  inviter: { name: string; email: string } | null;
 };
 
 type NewInviteForm = {
@@ -39,7 +43,24 @@ function IconCopy() {
   );
 }
 
+function IconUpload() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="16 16 12 12 8 16" />
+      <line x1="12" y1="12" x2="12" y2="21" />
+      <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3" />
+    </svg>
+  );
+}
+
 function StatusBadge({ inv }: { inv: Invitation }) {
+  if (inv.revokedAt) {
+    return (
+      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border bg-error-bg text-error border-error-border">
+        Revoked
+      </span>
+    );
+  }
   if (inv.usedAt) {
     return (
       <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border bg-success-bg text-success border-success-border">
@@ -71,12 +92,23 @@ export default function InvitationsPage() {
   const [formError, setFormError] = useState("");
   const [generatedLink, setGeneratedLink] = useState("");
   const [copied, setCopied] = useState(false);
+  const [copiedRowId, setCopiedRowId] = useState<string | null>(null);
+  const [revoking, setRevoking] = useState<string | null>(null);
+  const [resending, setResending] = useState<string | null>(null);
+  const [confirmRevokeId, setConfirmRevokeId] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+  const showToast = useCallback((msg: string) => { setToast(msg); }, []);
+  const [loadError, setLoadError] = useState(false);
+  const [bulkUploading, setBulkUploading] = useState(false);
+  const [bulkResult, setBulkResult] = useState<{ created: number; skipped: number; results: Array<{ status: string; email: string; tenantSlug: string; invitationUrl?: string; reason?: string }> } | null>(null);
+  const bulkFileRef = useRef<HTMLInputElement>(null);
 
   const loadInvitations = () => {
+    setLoadError(false);
     fetch("/api/super-admin/invitations")
       .then((r) => r.json())
       .then((data) => { setInvitations(data); setLoading(false); })
-      .catch(() => setLoading(false));
+      .catch(() => { setLoadError(true); setLoading(false); });
   };
 
   useEffect(() => { loadInvitations(); }, []);
@@ -104,6 +136,7 @@ export default function InvitationsPage() {
 
     setGeneratedLink(`${window.location.origin}${data.invitationUrl}`);
     setForm({ email: "", tenantName: "", tenantSlug: "", expiresInDays: 7 });
+    showToast("Invitation created");
     setSubmitting(false);
     loadInvitations();
   };
@@ -117,8 +150,59 @@ export default function InvitationsPage() {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const copyRowLink = async (inv: Invitation) => {
+    const url = `${window.location.origin}/accept-invitation?token=${inv.token}`;
+    await navigator.clipboard.writeText(url);
+    setCopiedRowId(inv.id);
+    setTimeout(() => setCopiedRowId(null), 2000);
+  };
+
+  const revokeInvitation = async (inv: Invitation) => {
+    setRevoking(inv.id);
+    setConfirmRevokeId(null);
+    await fetch(`/api/super-admin/invitations/${inv.id}`, { method: "DELETE" });
+    setRevoking(null);
+    showToast("Invitation revoked");
+    loadInvitations();
+  };
+
+  const handleBulkUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setBulkUploading(true);
+    setBulkResult(null);
+    const formData = new FormData();
+    formData.append("file", file);
+    const res = await fetch("/api/super-admin/invitations/bulk", { method: "POST", body: formData });
+    const data = await res.json();
+    if (res.ok) {
+      setBulkResult(data);
+      showToast(`${data.created} invitation${data.created !== 1 ? "s" : ""} created`);
+      loadInvitations();
+    }
+    setBulkUploading(false);
+    e.target.value = "";
+  };
+
+  const resendInvitation = async (inv: Invitation) => {
+    setResending(inv.id);
+    const res = await fetch(`/api/super-admin/invitations/${inv.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ expiresInDays: 7 }),
+    });
+    const data = await res.json();
+    if (res.ok) {
+      setGeneratedLink(`${window.location.origin}${data.invitationUrl}`);
+      showToast("Invitation extended — new link ready");
+    }
+    setResending(null);
+    loadInvitations();
+  };
+
   return (
     <div className="px-8 py-8 space-y-5">
+      {toast && <Toast message={toast} onDismiss={() => setToast(null)} />}
       <div className="mb-7">
         <h1 className="text-[22px] font-semibold text-heading">Admin Invitations</h1>
         <p className="text-sm text-secondary mt-0.5">Invite review center admins to join the platform.</p>
@@ -218,6 +302,49 @@ export default function InvitationsPage() {
         </div>
       </div>
 
+      {/* Bulk CSV upload */}
+      <div className="bg-surface-card border border-border rounded-xl shadow-sm">
+        <div className="px-5 py-4 border-b border-border-subtle">
+          <h2 className="text-sm font-semibold text-heading">Bulk invite via CSV</h2>
+          <p className="text-xs text-secondary mt-0.5">
+            Upload a CSV to create multiple admin invitations at once.
+          </p>
+        </div>
+        <div className="px-5 py-4 space-y-3">
+          <div className="bg-info-bg border border-info-border rounded-lg px-4 py-3">
+            <p className="text-xs font-semibold text-info mb-1.5">Required CSV columns</p>
+            <pre className="text-xs font-mono text-body bg-surface-card border border-border rounded-lg px-3 py-2 whitespace-pre-wrap">
+              {"email,tenantName,tenantSlug,expiresInDays\nadmin@center.com,Excellence Review,excellence-review,7"}
+            </pre>
+            <p className="text-xs text-secondary mt-1.5">expiresInDays is optional (defaults to 7).</p>
+          </div>
+          {bulkResult && (
+            <div className={`rounded-lg px-4 py-3 text-sm border ${bulkResult.created > 0 ? "bg-success-bg border-success-border text-success" : "bg-warning-bg border-warning-border text-warning"}`}>
+              {bulkResult.created} created, {bulkResult.skipped} skipped.
+              {bulkResult.results.filter(r => r.status === "skipped").length > 0 && (
+                <ul className="mt-2 space-y-1 text-xs">
+                  {bulkResult.results.filter(r => r.status === "skipped").map((r, i) => (
+                    <li key={i}><span className="font-mono">{r.email || r.tenantSlug}</span> — {r.reason}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+          <label className={`inline-flex items-center gap-2 h-9 px-4 rounded-lg text-sm font-medium transition-colors cursor-pointer ${bulkUploading ? "bg-border text-secondary" : "bg-surface-base border border-border text-body hover:border-border-strong"}`}>
+            {bulkUploading ? <Spinner /> : <IconUpload />}
+            {bulkUploading ? "Uploading…" : "Upload CSV"}
+            <input
+              ref={bulkFileRef}
+              type="file"
+              accept=".csv"
+              onChange={handleBulkUpload}
+              className="hidden"
+              disabled={bulkUploading}
+            />
+          </label>
+        </div>
+      </div>
+
       {/* Invitations list */}
       <div className="bg-surface-card border border-border rounded-xl shadow-sm">
         <div className="px-5 py-4 border-b border-border-subtle">
@@ -226,7 +353,14 @@ export default function InvitationsPage() {
             <span className="text-secondary font-normal">({invitations.length})</span>
           </h2>
         </div>
-        {loading ? (
+        {loadError ? (
+          <div className="px-5 py-8 text-center">
+            <p className="text-sm text-error mb-3">Failed to load invitations.</p>
+            <button onClick={loadInvitations} className="text-sm font-medium text-primary hover:underline">
+              Try again
+            </button>
+          </div>
+        ) : loading ? (
           <div className="flex items-center justify-center h-32">
             <Spinner />
           </div>
@@ -249,7 +383,7 @@ export default function InvitationsPage() {
                   <th className="px-5 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wide">Tenant</th>
                   <th className="px-5 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wide">Status</th>
                   <th className="px-5 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wide">Expires</th>
-                  <th className="px-5 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wide">Created</th>
+                  <th className="px-5 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wide">Invited by</th>
                   <th className="px-5 py-3 text-left text-xs font-medium text-secondary uppercase tracking-wide" />
                 </tr>
               </thead>
@@ -271,20 +405,73 @@ export default function InvitationsPage() {
                       {new Date(inv.expiresAt).toLocaleDateString()}
                     </td>
                     <td className="px-5 py-3.5 text-sm text-secondary">
-                      {new Date(inv.createdAt).toLocaleDateString()}
+                      {inv.inviter ? (
+                        <span title={inv.inviter.email}>{inv.inviter.name}</span>
+                      ) : (
+                        <span className="text-muted">—</span>
+                      )}
                     </td>
                     <td className="px-5 py-3.5 text-sm">
-                      {inv.usedAt && inv.tenantId ? (
-                        <Link
-                          href={`/super-admin/tenants/${inv.tenantId}`}
-                          className="inline-flex items-center gap-1 text-primary hover:text-primary-hover font-medium transition-colors"
-                        >
-                          View tenant
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="m9 18 6-6-6-6" />
-                          </svg>
-                        </Link>
-                      ) : null}
+                      <div className="flex items-center gap-3">
+                        {!inv.usedAt && !inv.revokedAt && (
+                          <>
+                            {new Date(inv.expiresAt) >= new Date() && (
+                              <button
+                                onClick={() => copyRowLink(inv)}
+                                className="inline-flex items-center gap-1.5 text-secondary hover:text-body font-medium transition-colors"
+                              >
+                                <IconCopy />
+                                {copiedRowId === inv.id ? "Copied!" : "Copy link"}
+                              </button>
+                            )}
+                            <button
+                              onClick={() => resendInvitation(inv)}
+                              disabled={resending === inv.id}
+                              className="inline-flex items-center gap-1 text-primary hover:opacity-75 font-medium transition-opacity disabled:opacity-50"
+                            >
+                              {resending === inv.id ? <Spinner /> : null}
+                              {new Date(inv.expiresAt) < new Date() ? "Reissue" : "Extend"}
+                            </button>
+                            {confirmRevokeId === inv.id ? (
+                              <span className="inline-flex items-center gap-2">
+                                <span className="text-xs text-secondary">Sure?</span>
+                                <button
+                                  onClick={() => revokeInvitation(inv)}
+                                  disabled={revoking === inv.id}
+                                  className="inline-flex items-center gap-1 text-error font-semibold hover:opacity-75 transition-opacity disabled:opacity-50"
+                                >
+                                  {revoking === inv.id ? <Spinner /> : null}
+                                  Yes
+                                </button>
+                                <button
+                                  onClick={() => setConfirmRevokeId(null)}
+                                  className="text-secondary hover:text-body font-medium transition-colors"
+                                >
+                                  Cancel
+                                </button>
+                              </span>
+                            ) : (
+                              <button
+                                onClick={() => setConfirmRevokeId(inv.id)}
+                                className="inline-flex items-center gap-1 text-error hover:opacity-75 font-medium transition-opacity"
+                              >
+                                Revoke
+                              </button>
+                            )}
+                          </>
+                        )}
+                        {inv.usedAt && inv.tenantId && (
+                          <Link
+                            href={`/super-admin/tenants/${inv.tenantId}`}
+                            className="inline-flex items-center gap-1 text-primary hover:text-primary-hover font-medium transition-colors"
+                          >
+                            View tenant
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="m9 18 6-6-6-6" />
+                            </svg>
+                          </Link>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}

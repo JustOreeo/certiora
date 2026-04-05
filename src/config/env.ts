@@ -12,6 +12,8 @@ const envSchema = z.object({
   S3_BUCKET: z.string().optional(),
   S3_REGION: z.string().optional(),
   OPENAI_API_KEY: z.string().optional(),
+  RESEND_API_KEY: z.string().optional(),
+  EMAIL_FROM: z.string().email().optional(),
 });
 
 const parsed = envSchema.safeParse({
@@ -26,6 +28,8 @@ const parsed = envSchema.safeParse({
   S3_BUCKET: process.env.S3_BUCKET,
   S3_REGION: process.env.S3_REGION,
   OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+  RESEND_API_KEY: process.env.RESEND_API_KEY,
+  EMAIL_FROM: process.env.EMAIL_FROM,
 });
 
 if (!parsed.success) {
@@ -37,6 +41,8 @@ export const config = {
   ...parsed.data,
   nodeEnv: parsed.data.NODE_ENV,
   redisUrl: parsed.data.REDIS_URL ?? undefined,
+  resendApiKey: parsed.data.RESEND_API_KEY ?? undefined,
+  emailFrom: parsed.data.EMAIL_FROM ?? "noreply@certiora.app",
   s3: {
     endpoint: parsed.data.S3_ENDPOINT,
     accessKeyId: parsed.data.S3_ACCESS_KEY_ID,
