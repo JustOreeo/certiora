@@ -127,13 +127,21 @@ export default function AdminFlashcardDecksPage() {
     <div className="p-6 max-w-5xl mx-auto">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-xl font-semibold text-body">Flashcard Decks</h1>
-        <button
-          type="button"
-          onClick={() => setCreateModalOpen(true)}
-          className="h-9 px-4 rounded-lg bg-brand-500 text-white text-sm font-medium hover:bg-brand-600 transition-colors"
-        >
-          New deck
-        </button>
+        <div className="flex items-center gap-2">
+          <Link
+            href={`/${tenantSlug}/admin/flashcard-decks/analytics`}
+            className="h-9 px-4 rounded-lg border border-border bg-surface-card text-sm font-medium text-body hover:bg-surface-base inline-flex items-center transition-colors"
+          >
+            Analytics
+          </Link>
+          <button
+            type="button"
+            onClick={() => setCreateModalOpen(true)}
+            className="h-9 px-4 rounded-lg bg-brand-500 text-white text-sm font-medium hover:bg-brand-600 transition-colors"
+          >
+            New deck
+          </button>
+        </div>
       </div>
 
       {loading ? (
