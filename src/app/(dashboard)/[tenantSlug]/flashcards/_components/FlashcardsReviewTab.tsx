@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { toUserMessage } from "@/lib/errors";
+import { MarkdownCardContent } from "@/components/MarkdownCardContent";
 
 type Option = { id: string; text: string; isCorrect?: boolean };
 type DueCardExam = {
@@ -86,10 +87,10 @@ export function FlashcardsReviewTab({
 
   const loadDecks = useCallback(async () => {
     try {
-      const res = await fetch("/api/flashcards/decks");
+      const res = await fetch("/api/flashcards/decks?pageSize=100");
       if (!res.ok) return;
       const data = await res.json();
-      setDecks(Array.isArray(data) ? data : []);
+      setDecks(data.items ?? (Array.isArray(data) ? data : []));
     } catch {
       setDecks([]);
     }
@@ -470,9 +471,9 @@ export function FlashcardsReviewTab({
                     style={{ minHeight: "inherit" }}
                     aria-hidden={flipped}
                   >
-                    <p className="text-body text-lg font-semibold text-center leading-relaxed whitespace-pre-wrap">
-                      {currentCard.front}
-                    </p>
+                    <div className="text-body text-lg font-semibold text-center leading-relaxed">
+                      <MarkdownCardContent content={currentCard.front} format="markdown" />
+                    </div>
                     <p className="text-xs text-muted mt-4 text-center">
                       Tap to reveal answer
                     </p>
@@ -485,9 +486,9 @@ export function FlashcardsReviewTab({
                     }}
                     aria-hidden={!flipped}
                   >
-                    <p className="text-body text-base leading-relaxed whitespace-pre-wrap text-left">
-                      {currentCard.back}
-                    </p>
+                    <div className="text-body text-base leading-relaxed text-left">
+                      <MarkdownCardContent content={currentCard.back} format="markdown" />
+                    </div>
                     <p className="text-xs text-muted mt-4">Tap to hide answer</p>
                   </div>
                 </div>

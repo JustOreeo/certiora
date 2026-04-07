@@ -38,6 +38,29 @@ export function buildFileKey(tenantId: string, sourceMaterialId: string, fileNam
   return `${tenantId}/source-materials/${sourceMaterialId}/${safeName}`;
 }
 
+export function buildCardImageKey(
+  tenantId: string,
+  cardId: string,
+  side: "front" | "back",
+  fileName: string
+): string {
+  const ext = fileName.split(".").pop()?.replace(/[^a-zA-Z0-9]/g, "") ?? "png";
+  const uuid = crypto.randomUUID().slice(0, 8);
+  return `${tenantId}/flashcard-images/${cardId}/${side}_${uuid}.${ext}`;
+}
+
+export async function getPresignedDownloadUrl(
+  fileKey: string,
+  expiresInSeconds = 3600
+): Promise<string> {
+  const client = getClient();
+  const command = new GetObjectCommand({
+    Bucket: config.s3.bucket!,
+    Key: fileKey,
+  });
+  return getSignedUrl(client, command, { expiresIn: expiresInSeconds });
+}
+
 export async function getPresignedUploadUrl(
   fileKey: string,
   contentType = "application/pdf",
