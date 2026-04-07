@@ -240,8 +240,8 @@ export const srsService = {
   },
 
   async gradeCardUnified(
-    input: GradeCardUnifiedInput
-  ): Promise<{ scheduledDays: number; nextReviewAt: string }> {
+    input: GradeCardUnifiedInput & { sessionId?: string }
+  ): Promise<{ scheduledDays: number; nextReviewAt: string; reviewLogId?: string }> {
     if (input.cardType === "exam") {
       const card = await prisma.srsCard.findFirst({
         where: {
@@ -329,7 +329,7 @@ export const srsService = {
       now
     );
 
-    await prisma.$transaction([
+    const [, reviewLog] = await prisma.$transaction([
       prisma.flashcardCardSrsState.update({
         where: { id: state.id },
         data: {
@@ -350,6 +350,7 @@ export const srsService = {
           userId: input.userId,
           cardId: state.cardId,
           deckId: state.card.deckId,
+          sessionId: input.sessionId ?? null,
           grade: input.grade,
           state: logSnapshot.state,
           stabilityBefore: logSnapshot.stabilityBefore,
@@ -366,6 +367,7 @@ export const srsService = {
     return {
       scheduledDays: output.nextIntervalDays,
       nextReviewAt: output.nextReviewAt.toISOString(),
+      reviewLogId: reviewLog.id,
     };
   },
 
@@ -451,6 +453,281 @@ export const srsService = {
       customDueToday,
       customTotal,
       byState: byStateMap,
+    };
+  },
+
+  /**
+   * Get due cards with cursor-based pagination for batched loading.
+   */
+  async getDueCardsBatched(
+    tenantId: string,
+    userId: string,
+    options?: { deckId?: string; batchSize?: number; cursor?: string }
+  ): Promise<{ cards: DueCard[]; nextCursor: string | null }> {
+    const batchSize = options?.batchSize ?? 10;
+    const now = new Date();
+
+    const cursorFilter = options?.cursor
+      ? (() => {
+          const [isoDate, id] = options.cursor!.split("|");
+          const cursorDate = new Date(isoDate);
+          return {
+            OR: [
+              { nextReviewAt: { lt: cursorDate } },
+              { nextReviewAt: cursorDate, id: { gt: id } },
+            ],
+          };
+        })()
+      : {};
+
+    const customStates = await prisma.flashcardCardSrsState.findMany({
+      where: {
+        ...tenantScope(tenantId),
+        userId,
+        nextReviewAt: { lte: now },
+        ...(options?.deckId && { card: { deckId: options.deckId } }),
+        ...cursorFilter,
+      },
+      orderBy: [{ nextReviewAt: "asc" }, { id: "asc" }],
+      take: batchSize + 1,
+      include: {
+        card: { include: { deck: { select: { id: true, name: true, retentionTarget: true } } } },
+      },
+    });
+
+    const hasMore = customStates.length > batchSize;
+    const states = hasMore ? customStates.slice(0, batchSize) : customStates;
+
+    let customItems: DueCardCustom[] = states.map((s) => ({
+      cardType: "custom" as const,
+      id: s.id,
+      cardId: s.cardId,
+      front: s.card.front,
+      back: s.card.back,
+      deckId: s.card.deck.id,
+      deckName: s.card.deck.name,
+      nextReviewAt: s.nextReviewAt.toISOString(),
+    }));
+
+    if (customItems.length > 0) {
+      const [tenantParams, studentParams] = await Promise.all([
+        prisma.fsrsParams.findFirst({ where: { tenantId, userId: null } }),
+        prisma.fsrsParams.findUnique({ where: { tenantId_userId: { tenantId, userId } } }),
+      ]);
+      const { defaultFsrsW } = await import("@/lib/fsrs");
+      const w = (studentParams ?? tenantParams)?.w ?? defaultFsrsW();
+      const baseRTarget = resolveRetentionTarget({
+        deckRetentionTarget: null,
+        studentRetentionTarget: studentParams?.retentionTarget ?? null,
+        tenantRetentionTarget: tenantParams?.retentionTarget ?? null,
+      });
+      customItems = customItems.map((item, i) => {
+        const s = states[i];
+        if (!s) return item;
+        const lastReviewAt = s.lastReviewAt ?? now;
+        const elapsedDays = Math.max(
+          0,
+          Math.floor((now.getTime() - lastReviewAt.getTime()) / (24 * 60 * 60 * 1000))
+        );
+        const input: FsrsStateInput = {
+          state: s.state as FsrsStateInput["state"],
+          stability: s.stability,
+          difficulty: s.difficulty,
+          elapsedDays,
+          scheduledDays: s.scheduledDays,
+          reps: s.reps,
+          lapses: s.lapses,
+          lastReviewAt: s.lastReviewAt,
+        };
+        const preview = intervalPreview(input, baseRTarget, w, now);
+        return { ...item, intervalPreview: preview };
+      });
+    }
+
+    const lastState = states[states.length - 1];
+    const nextCursor = hasMore && lastState
+      ? `${lastState.nextReviewAt.toISOString()}|${lastState.id}`
+      : null;
+
+    return { cards: customItems, nextCursor };
+  },
+
+  /**
+   * Get cards for cram mode — all cards in a deck, regardless of SRS schedule.
+   */
+  async getCramCards(
+    tenantId: string,
+    userId: string,
+    deckId: string,
+    options?: { batchSize?: number; cursor?: string }
+  ): Promise<{ cards: DueCardCustom[]; nextCursor: string | null; totalCards: number }> {
+    const batchSize = options?.batchSize ?? 10;
+
+    const deck = await prisma.flashcardDeck.findFirst({
+      where: { id: deckId, ...tenantScope(tenantId), userId },
+      select: { id: true, name: true },
+    });
+    if (!deck) return { cards: [], nextCursor: null, totalCards: 0 };
+
+    const cursorFilter = options?.cursor
+      ? { id: { gt: options.cursor } }
+      : {};
+
+    const [cardsRaw, totalCards] = await Promise.all([
+      prisma.flashcardCard.findMany({
+        where: { deckId, ...tenantScope(tenantId), ...cursorFilter },
+        orderBy: [{ order: "asc" }, { id: "asc" }],
+        take: batchSize + 1,
+      }),
+      prisma.flashcardCard.count({ where: { deckId, ...tenantScope(tenantId) } }),
+    ]);
+
+    const hasMore = cardsRaw.length > batchSize;
+    const batch = hasMore ? cardsRaw.slice(0, batchSize) : cardsRaw;
+
+    const cards: DueCardCustom[] = batch.map((c) => ({
+      cardType: "custom" as const,
+      id: c.id,
+      cardId: c.id,
+      front: c.front,
+      back: c.back,
+      deckId: deck.id,
+      deckName: deck.name,
+      nextReviewAt: new Date().toISOString(),
+    }));
+
+    const lastCard = batch[batch.length - 1];
+    const nextCursor = hasMore && lastCard ? lastCard.id : null;
+
+    return { cards, nextCursor, totalCards };
+  },
+
+  /**
+   * Undo the most recent grade for a card.
+   * Restores SRS state from review log before-values, deletes the log.
+   */
+  async undoLastGrade(
+    tenantId: string,
+    userId: string,
+    reviewLogId: string
+  ): Promise<{ success: boolean; restoredCardId: string } | null> {
+    const log = await prisma.flashcardReviewLog.findFirst({
+      where: { id: reviewLogId, ...tenantScope(tenantId), userId },
+    });
+    if (!log) return null;
+
+    // Verify this is the most recent log for this card
+    const newerLog = await prisma.flashcardReviewLog.findFirst({
+      where: {
+        ...tenantScope(tenantId),
+        userId,
+        cardId: log.cardId,
+        reviewedAt: { gt: log.reviewedAt },
+      },
+    });
+    if (newerLog) return null; // Can only undo the latest
+
+    const srsState = await prisma.flashcardCardSrsState.findFirst({
+      where: { ...tenantScope(tenantId), userId, cardId: log.cardId },
+    });
+    if (!srsState) return null;
+
+    // Find the previous log to get lastReviewAt
+    const prevLog = await prisma.flashcardReviewLog.findFirst({
+      where: {
+        ...tenantScope(tenantId),
+        userId,
+        cardId: log.cardId,
+        reviewedAt: { lt: log.reviewedAt },
+      },
+      orderBy: { reviewedAt: "desc" },
+    });
+
+    await prisma.$transaction([
+      prisma.flashcardCardSrsState.update({
+        where: { id: srsState.id },
+        data: {
+          state: log.state, // state BEFORE the review
+          stability: log.stabilityBefore,
+          difficulty: log.difficultyBefore,
+          reps: Math.max(0, srsState.reps - 1),
+          lapses: log.grade === 1 ? Math.max(0, srsState.lapses - 1) : srsState.lapses,
+          elapsedDays: log.elapsedDays,
+          scheduledDays: log.scheduledDays,
+          nextReviewAt: new Date(), // due now after undo
+          lastReviewAt: prevLog?.reviewedAt ?? null,
+        },
+      }),
+      prisma.flashcardReviewLog.delete({ where: { id: log.id } }),
+    ]);
+
+    return { success: true, restoredCardId: log.cardId };
+  },
+
+  /**
+   * Start a study session.
+   */
+  async startStudySession(
+    tenantId: string,
+    userId: string,
+    opts: { deckId?: string; mode?: "NORMAL" | "CRAM" }
+  ) {
+    const session = await prisma.flashcardStudySession.create({
+      data: {
+        tenantId,
+        userId,
+        deckId: opts.deckId ?? null,
+        mode: opts.mode ?? "NORMAL",
+      },
+    });
+    return { sessionId: session.id };
+  },
+
+  /**
+   * End a study session with stats.
+   */
+  async endStudySession(
+    tenantId: string,
+    userId: string,
+    sessionId: string,
+    stats: { cardsReviewed: number; cardsCorrect: number; xpEarned: number; totalTimeMs: number }
+  ) {
+    const session = await prisma.flashcardStudySession.findFirst({
+      where: { id: sessionId, ...tenantScope(tenantId), userId },
+    });
+    if (!session) return null;
+
+    return prisma.flashcardStudySession.update({
+      where: { id: sessionId },
+      data: {
+        endedAt: new Date(),
+        cardsReviewed: stats.cardsReviewed,
+        cardsCorrect: stats.cardsCorrect,
+        xpEarned: stats.xpEarned,
+        totalTimeMs: stats.totalTimeMs,
+      },
+    });
+  },
+
+  /**
+   * Get study session by ID.
+   */
+  async getStudySession(tenantId: string, userId: string, sessionId: string) {
+    const session = await prisma.flashcardStudySession.findFirst({
+      where: { id: sessionId, ...tenantScope(tenantId), userId },
+      include: { deck: { select: { name: true } } },
+    });
+    if (!session) return null;
+    return {
+      id: session.id,
+      mode: session.mode,
+      deckName: session.deck?.name ?? null,
+      startedAt: session.startedAt.toISOString(),
+      endedAt: session.endedAt?.toISOString() ?? null,
+      cardsReviewed: session.cardsReviewed,
+      cardsCorrect: session.cardsCorrect,
+      xpEarned: session.xpEarned,
+      totalTimeMs: session.totalTimeMs,
     };
   },
 };

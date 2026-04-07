@@ -24,12 +24,14 @@ export async function POST(request: NextRequest) {
   const unified = gradeCardUnifiedSchema.safeParse(body);
   if (unified.success) {
     try {
+      const sessionId = (body as Record<string, unknown>)?.sessionId;
       const result = await srsService.gradeCardUnified({
         tenantId: session.tenantId,
         userId: session.user.id,
         cardType: unified.data.cardType,
         id: unified.data.id,
         grade: unified.data.grade as 1 | 2 | 3 | 4,
+        sessionId: typeof sessionId === "string" ? sessionId : undefined,
       });
       if (unified.data.cardType === "custom") {
         flashcardService.enqueueFsrsOptimizeIfNeeded(session.tenantId, session.user.id).catch(() => {});
