@@ -7,6 +7,25 @@ import { toUserMessage } from "@/lib/errors";
 import { SourceBadge } from "../../_components/SourceBadge";
 import { CardEditorModal } from "../../_components/CardEditorModal";
 import { DeckUpdateDiffModal } from "../../_components/DeckUpdateDiffModal";
+import { BulkCardEditor } from "../../_components/BulkCardEditor";
+import { CsvImportDialog } from "../../_components/CsvImportDialog";
+import { MarkdownCardContent } from "@/components/MarkdownCardContent";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  useSortable,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 function LockIcon({ className }: { className?: string }) {
   return (
@@ -38,7 +57,7 @@ type Deck = {
   sourceDeck: { version: number } | null;
   retentionTarget: number | null;
   suggestedRetentionTarget: number | null;
-  cards: Card[];
+  tags: { id: string; name: string }[];
   cardCount: number;
   dueToday: number;
 };
@@ -52,6 +71,94 @@ function Spinner() {
   );
 }
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
+function DragHandle({ listeners, attributes }: { listeners?: any; attributes?: any }) {
+  return (
+    <button
+      type="button"
+      className="cursor-grab active:cursor-grabbing p-1 text-muted hover:text-secondary touch-none"
+      aria-label="Drag to reorder"
+      {...listeners}
+      {...attributes}
+    >
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+        <circle cx="5" cy="3" r="1.5" /><circle cx="11" cy="3" r="1.5" />
+        <circle cx="5" cy="8" r="1.5" /><circle cx="11" cy="8" r="1.5" />
+        <circle cx="5" cy="13" r="1.5" /><circle cx="11" cy="13" r="1.5" />
+      </svg>
+    </button>
+  );
+}
+
+function SortableCard({
+  card,
+  onEdit,
+  onDelete,
+  deleting,
+}: {
+  card: Card;
+  onEdit: () => void;
+  onDelete: () => void;
+  deleting: boolean;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: card.id });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  return (
+    <li
+      ref={setNodeRef}
+      style={style}
+      className="bg-surface-card border border-border rounded-xl p-4 shadow-sm"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="flex items-start gap-2 min-w-0 flex-1">
+          <DragHandle listeners={listeners} attributes={attributes} />
+          <div className="min-w-0 flex-1">
+            {card.isOrphaned && (
+              <p className="text-xs text-secondary italic mb-1">No longer in source deck</p>
+            )}
+            <div className="font-medium text-body">
+              <MarkdownCardContent
+                content={card.front.length > 120 ? `${card.front.slice(0, 120)}…` : card.front}
+                format="markdown"
+              />
+            </div>
+            <details className="mt-2">
+              <summary className="text-sm text-secondary cursor-pointer hover:text-body">
+                Show back
+              </summary>
+              <div className="mt-2 text-sm text-body">
+                <MarkdownCardContent content={card.back} format="markdown" />
+              </div>
+            </details>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={onEdit}
+            className="h-9 px-3 rounded-lg text-sm font-medium border border-border bg-surface-base hover:bg-surface-card"
+          >
+            Edit
+          </button>
+          <button
+            type="button"
+            disabled={deleting}
+            onClick={onDelete}
+            className="h-9 px-3 rounded-lg text-sm font-medium text-error border border-error/30 hover:bg-error/10 disabled:opacity-50"
+          >
+            {deleting ? "…" : "Delete"}
+          </button>
+        </div>
+      </div>
+    </li>
+  );
+}
+
 export default function DeckDetailPage() {
   const params = useParams<{ tenantSlug: string; deckId: string }>();
   const router = useRouter();
@@ -59,16 +166,32 @@ export default function DeckDetailPage() {
   const deckId = params?.deckId ?? "";
 
   const [deck, setDeck] = useState<Deck | null>(null);
+  const [cards, setCards] = useState<Card[]>([]);
+  const [cardTotal, setCardTotal] = useState(0);
+  const [cardPage, setCardPage] = useState(1);
+  const [cardSearch, setCardSearch] = useState("");
   const [loading, setLoading] = useState(true);
+  const [cardsLoading, setCardsLoading] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingCard, setEditingCard] = useState<Card | null>(null);
   const [shareLoading, setShareLoading] = useState(false);
   const [copyFeedback, setCopyFeedback] = useState(false);
   const [deletingCardId, setDeletingCardId] = useState<string | null>(null);
   const [updateDiffOpen, setUpdateDiffOpen] = useState(false);
+  const [bulkEditorOpen, setBulkEditorOpen] = useState(false);
+  const [csvImportOpen, setCsvImportOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [accountRetentionTarget, setAccountRetentionTarget] = useState<number>(0.9);
   const [retentionSaving, setRetentionSaving] = useState(false);
   const [deckToast, setDeckToast] = useState<string | null>(null);
+  const [tagInput, setTagInput] = useState("");
+  const [addingTag, setAddingTag] = useState(false);
+  const cardPageSize = 20;
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
 
   const showDeckToast = (message: string) => {
     setDeckToast(message);
@@ -94,9 +217,43 @@ export default function DeckDetailPage() {
     }
   }, [deckId]);
 
+  const loadCards = useCallback(async (p = 1, search = "") => {
+    if (!deckId) return;
+    setCardsLoading(true);
+    try {
+      const params = new URLSearchParams({
+        page: String(p),
+        pageSize: String(cardPageSize),
+      });
+      if (search) params.set("search", search);
+      const res = await fetch(`/api/flashcards/decks/${deckId}/cards?${params}`);
+      if (!res.ok) throw new Error("Failed to load cards");
+      const data = await res.json();
+      setCards(data.items ?? []);
+      setCardTotal(data.total ?? 0);
+      setCardPage(data.page ?? 1);
+    } catch (e) {
+      console.error(e);
+      setCards([]);
+    } finally {
+      setCardsLoading(false);
+    }
+  }, [deckId]);
+
+  // Debounce search
+  const [debouncedCardSearch, setDebouncedCardSearch] = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedCardSearch(cardSearch.trim()), 300);
+    return () => clearTimeout(t);
+  }, [cardSearch]);
+
   useEffect(() => {
     loadDeck();
   }, [loadDeck]);
+
+  useEffect(() => {
+    loadCards(1, debouncedCardSearch);
+  }, [loadCards, debouncedCardSearch]);
 
   useEffect(() => {
     if (!deckId) return;
@@ -124,7 +281,10 @@ export default function DeckDetailPage() {
   };
 
   const handleCardSaved = (saved: { id: string; front: string; back: string } | null) => {
-    if (saved) loadDeck();
+    if (saved) {
+      loadCards(cardPage, debouncedCardSearch);
+      loadDeck(); // refresh cardCount
+    }
     if (editingCard) {
       setEditorOpen(false);
       setEditingCard(null);
@@ -143,9 +303,9 @@ export default function DeckDetailPage() {
         alert(toUserMessage(data, "Failed to delete card."));
         return;
       }
-      setDeck((d) =>
-        d ? { ...d, cards: d.cards.filter((c) => c.id !== card.id), cardCount: d.cardCount - 1 } : null
-      );
+      setCards((prev) => prev.filter((c) => c.id !== card.id));
+      setCardTotal((t) => t - 1);
+      setDeck((d) => (d ? { ...d, cardCount: d.cardCount - 1 } : null));
     } catch (e) {
       alert(toUserMessage(e, "Failed to delete card."));
     } finally {
@@ -221,6 +381,62 @@ export default function DeckDetailPage() {
     }
   };
 
+  const handleExportCsv = async () => {
+    setExporting(true);
+    try {
+      const res = await fetch(`/api/flashcards/decks/${deckId}/export`);
+      if (!res.ok) {
+        showDeckToast("Export failed");
+        return;
+      }
+      const blob = await res.blob();
+      const disposition = res.headers.get("Content-Disposition") ?? "";
+      const match = disposition.match(/filename="(.+?)"/);
+      const filename = match?.[1] ?? "deck-export.csv";
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      showDeckToast("Export failed");
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = cards.findIndex((c) => c.id === active.id);
+    const newIndex = cards.findIndex((c) => c.id === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+
+    // Optimistic reorder
+    const reordered = [...cards];
+    const [moved] = reordered.splice(oldIndex, 1);
+    reordered.splice(newIndex, 0, moved);
+    setCards(reordered);
+
+    try {
+      const res = await fetch(`/api/flashcards/decks/${deckId}/cards/reorder`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cardOrder: reordered.map((c) => c.id) }),
+      });
+      if (!res.ok) {
+        showDeckToast("Reorder failed");
+        loadCards(cardPage, debouncedCardSearch);
+      }
+    } catch {
+      showDeckToast("Reorder failed");
+      loadCards(cardPage, debouncedCardSearch);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -290,10 +506,84 @@ export default function DeckDetailPage() {
           <h1 className="text-xl font-semibold text-body">{deck.name}</h1>
           <SourceBadge source={deck.source} />
         </div>
-        <div className="flex flex-wrap items-center gap-3 text-sm text-secondary mb-2">
+        {/* Tags */}
+        <div className="flex flex-wrap items-center gap-1.5 mb-2">
+          {deck.tags.map((tag) => (
+            <span
+              key={tag.id}
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-surface-base border border-border text-secondary"
+            >
+              {tag.name}
+              <button
+                type="button"
+                onClick={async () => {
+                  await fetch(`/api/flashcards/decks/${deckId}/tags/${tag.id}`, { method: "DELETE" });
+                  setDeck((d) => d ? { ...d, tags: d.tags.filter((t) => t.id !== tag.id) } : null);
+                }}
+                className="text-secondary hover:text-error ml-0.5"
+                aria-label={`Remove tag ${tag.name}`}
+              >
+                &times;
+              </button>
+            </span>
+          ))}
+          <form
+            onSubmit={async (e) => {
+              e.preventDefault();
+              if (!tagInput.trim() || addingTag) return;
+              setAddingTag(true);
+              try {
+                const res = await fetch(`/api/flashcards/decks/${deckId}/tags`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ name: tagInput.trim() }),
+                });
+                if (res.ok) {
+                  const tag = await res.json();
+                  setDeck((d) => d ? {
+                    ...d,
+                    tags: d.tags.some((t) => t.id === tag.id) ? d.tags : [...d.tags, tag],
+                  } : null);
+                  setTagInput("");
+                }
+              } finally {
+                setAddingTag(false);
+              }
+            }}
+            className="inline-flex"
+          >
+            <input
+              type="text"
+              value={tagInput}
+              onChange={(e) => setTagInput(e.target.value)}
+              placeholder="+ tag"
+              maxLength={50}
+              className="w-16 px-2 py-0.5 rounded-full text-xs border border-dashed border-border bg-transparent text-body placeholder:text-muted focus:w-24 focus:border-primary transition-all"
+            />
+          </form>
+        </div>
+        <div className="flex flex-wrap items-center gap-3 text-sm text-secondary mb-3">
           <span>{deck.cardCount} cards</span>
           {deck.dueToday > 0 && (
             <span className="font-medium text-primary">{deck.dueToday} due today</span>
+          )}
+        </div>
+        <div className="flex flex-wrap gap-2 mb-4">
+          {deck.dueToday > 0 && (
+            <Link
+              href={`/${tenantSlug}/flashcards/study?deckId=${deck.id}`}
+              className="inline-flex h-10 items-center px-4 rounded-lg text-sm font-semibold bg-primary text-inverse hover:bg-primary-hover transition-colors"
+            >
+              Study ({deck.dueToday} due)
+            </Link>
+          )}
+          {deck.cardCount > 0 && (
+            <Link
+              href={`/${tenantSlug}/flashcards/study?deckId=${deck.id}&mode=cram`}
+              className="inline-flex h-10 items-center px-4 rounded-lg text-sm font-medium border border-border bg-surface-card hover:bg-surface-base transition-colors"
+            >
+              Cram all cards
+            </Link>
           )}
         </div>
         {deck.description && (
@@ -419,19 +709,59 @@ export default function DeckDetailPage() {
           )}
         </div>
 
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
           <h2 className="text-lg font-medium text-body">Cards</h2>
-          <button
-            type="button"
-            onClick={handleAddCard}
-            className="h-10 px-4 rounded-lg text-sm font-semibold bg-primary text-inverse hover:bg-primary-hover"
-          >
-            Add Card
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              type="search"
+              value={cardSearch}
+              onChange={(e) => setCardSearch(e.target.value)}
+              placeholder="Search cards…"
+              className="px-3 py-2 rounded-lg border border-border bg-surface-base text-body text-sm w-48"
+              aria-label="Search cards"
+            />
+            {deck.cardCount > 0 && (
+              <button
+                type="button"
+                disabled={exporting}
+                onClick={handleExportCsv}
+                className="h-10 px-3 rounded-lg text-sm font-medium border border-border bg-surface-card hover:bg-surface-base whitespace-nowrap disabled:opacity-50"
+              >
+                {exporting ? "Exporting…" : "Export CSV"}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setCsvImportOpen(true)}
+              className="h-10 px-3 rounded-lg text-sm font-medium border border-border bg-surface-card hover:bg-surface-base whitespace-nowrap"
+            >
+              Import CSV
+            </button>
+            <button
+              type="button"
+              onClick={() => setBulkEditorOpen(true)}
+              className="h-10 px-3 rounded-lg text-sm font-medium border border-border bg-surface-card hover:bg-surface-base whitespace-nowrap"
+            >
+              Bulk Add
+            </button>
+            <button
+              type="button"
+              onClick={handleAddCard}
+              className="h-10 px-4 rounded-lg text-sm font-semibold bg-primary text-inverse hover:bg-primary-hover whitespace-nowrap"
+            >
+              Add Card
+            </button>
+          </div>
         </div>
       </div>
 
-      {deck.cards.length === 0 ? (
+      {cardsLoading && (
+        <div className="flex items-center justify-center py-8">
+          <Spinner />
+        </div>
+      )}
+
+      {!cardsLoading && cards.length === 0 && !debouncedCardSearch ? (
         <div className="bg-surface-card border border-border rounded-xl px-6 py-12 text-center shadow-sm">
           <p className="text-sm text-secondary">No cards yet. Add your first card to start building this deck.</p>
           <button
@@ -442,54 +772,54 @@ export default function DeckDetailPage() {
             Add card
           </button>
         </div>
-      ) : (
-        <ul className="space-y-3">
-          {deck.cards.map((card) => (
-            <li
-              key={card.id}
-              className="bg-surface-card border border-border rounded-xl p-4 shadow-sm"
-            >
-              <div className="flex flex-wrap items-start justify-between gap-2">
-                <div className="min-w-0 flex-1">
-                  {card.isOrphaned && (
-                    <p className="text-xs text-secondary italic mb-1">
-                      No longer in source deck
-                    </p>
-                  )}
-                  <p className="font-medium text-body break-words">
-                    {card.front.length > 120 ? `${card.front.slice(0, 120)}…` : card.front}
-                  </p>
-                  <details className="mt-2">
-                    <summary className="text-sm text-secondary cursor-pointer hover:text-body">
-                      Show back
-                    </summary>
-                    <p className="mt-2 text-sm text-body whitespace-pre-wrap break-words">
-                      {card.back}
-                    </p>
-                  </details>
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => handleEditCard(card)}
-                    className="h-9 px-3 rounded-lg text-sm font-medium border border-border bg-surface-base hover:bg-surface-card"
-                  >
-                    Edit
-                  </button>
-                  <button
-                    type="button"
-                    disabled={deletingCardId === card.id}
-                    onClick={() => handleDeleteCard(card)}
-                    className="h-9 px-3 rounded-lg text-sm font-medium text-error border border-error/30 hover:bg-error/10 disabled:opacity-50"
-                  >
-                    {deletingCardId === card.id ? "…" : "Delete"}
-                  </button>
-                </div>
+      ) : !cardsLoading && cards.length === 0 && debouncedCardSearch ? (
+        <div className="bg-surface-card border border-border rounded-xl px-6 py-8 text-center shadow-sm">
+          <p className="text-sm text-secondary">No cards match &ldquo;{debouncedCardSearch}&rdquo;</p>
+        </div>
+      ) : !cardsLoading && cards.length > 0 ? (
+        <>
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <SortableContext items={cards.map((c) => c.id)} strategy={verticalListSortingStrategy}>
+              <ul className="space-y-3">
+                {cards.map((card) => (
+                  <SortableCard
+                    key={card.id}
+                    card={card}
+                    onEdit={() => handleEditCard(card)}
+                    onDelete={() => handleDeleteCard(card)}
+                    deleting={deletingCardId === card.id}
+                  />
+                ))}
+              </ul>
+            </SortableContext>
+          </DndContext>
+          {cardTotal > cardPageSize && (
+            <div className="flex items-center justify-between pt-4">
+              <span className="text-xs text-secondary">
+                Showing {(cardPage - 1) * cardPageSize + 1}–{Math.min(cardPage * cardPageSize, cardTotal)} of {cardTotal}
+              </span>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  disabled={cardPage <= 1}
+                  onClick={() => loadCards(cardPage - 1, debouncedCardSearch)}
+                  className="inline-flex h-8 items-center px-3 rounded-lg text-xs font-medium border border-border bg-surface-card hover:bg-surface-base disabled:opacity-40"
+                >
+                  Previous
+                </button>
+                <button
+                  type="button"
+                  disabled={cardPage * cardPageSize >= cardTotal}
+                  onClick={() => loadCards(cardPage + 1, debouncedCardSearch)}
+                  className="inline-flex h-8 items-center px-3 rounded-lg text-xs font-medium border border-border bg-surface-card hover:bg-surface-base disabled:opacity-40"
+                >
+                  Next
+                </button>
               </div>
-            </li>
-          ))}
-        </ul>
-      )}
+            </div>
+          )}
+        </>
+      ) : null}
 
       <CardEditorModal
         open={editorOpen}
@@ -507,6 +837,29 @@ export default function DeckDetailPage() {
         deckId={deckId}
         onClose={() => setUpdateDiffOpen(false)}
         onApplied={loadDeck}
+      />
+
+      <BulkCardEditor
+        open={bulkEditorOpen}
+        deckId={deckId}
+        onClose={() => setBulkEditorOpen(false)}
+        onDone={() => {
+          setBulkEditorOpen(false);
+          loadCards(1, debouncedCardSearch);
+          loadDeck();
+        }}
+      />
+
+      <CsvImportDialog
+        open={csvImportOpen}
+        deckId={deckId}
+        onClose={() => setCsvImportOpen(false)}
+        onDone={(created) => {
+          setCsvImportOpen(false);
+          showDeckToast(`Imported ${created} card${created === 1 ? "" : "s"}`);
+          loadCards(1, debouncedCardSearch);
+          loadDeck();
+        }}
       />
     </div>
   );
