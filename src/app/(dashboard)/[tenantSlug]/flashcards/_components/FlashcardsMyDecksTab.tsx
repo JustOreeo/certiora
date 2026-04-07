@@ -54,18 +54,23 @@ function Spinner() {
 
 export function FlashcardsMyDecksTab({ tenantSlug }: { tenantSlug: string }) {
   const [decks, setDecks] = useState<DeckListItem[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const pageSize = 20;
 
-  const loadDecks = async () => {
+  const loadDecks = async (p = page) => {
     setLoading(true);
     try {
-      const res = await fetch("/api/flashcards/decks");
+      const res = await fetch(`/api/flashcards/decks?page=${p}&pageSize=${pageSize}`);
       if (!res.ok) throw new Error("Failed to load decks");
       const data = await res.json();
-      setDecks(Array.isArray(data) ? data : []);
+      setDecks(data.items ?? []);
+      setTotal(data.total ?? 0);
+      setPage(data.page ?? 1);
     } catch (e) {
       console.error(e);
       setDecks([]);
@@ -75,7 +80,8 @@ export function FlashcardsMyDecksTab({ tenantSlug }: { tenantSlug: string }) {
   };
 
   useEffect(() => {
-    loadDecks();
+    loadDecks(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleCreateDone = (deckId: string | null) => {
@@ -226,6 +232,32 @@ export function FlashcardsMyDecksTab({ tenantSlug }: { tenantSlug: string }) {
             </li>
           ))}
         </ul>
+      )}
+
+      {total > pageSize && (
+        <div className="flex items-center justify-between pt-2">
+          <span className="text-xs text-secondary">
+            Showing {(page - 1) * pageSize + 1}–{Math.min(page * pageSize, total)} of {total}
+          </span>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              disabled={page <= 1}
+              onClick={() => loadDecks(page - 1)}
+              className="inline-flex h-8 items-center px-3 rounded-lg text-xs font-medium border border-border bg-surface-card hover:bg-surface-base disabled:opacity-40"
+            >
+              Previous
+            </button>
+            <button
+              type="button"
+              disabled={page * pageSize >= total}
+              onClick={() => loadDecks(page + 1)}
+              className="inline-flex h-8 items-center px-3 rounded-lg text-xs font-medium border border-border bg-surface-card hover:bg-surface-base disabled:opacity-40"
+            >
+              Next
+            </button>
+          </div>
+        </div>
       )}
 
       <CreateDeckModal open={createOpen} onClose={() => setCreateOpen(false)} onDone={handleCreateDone} />

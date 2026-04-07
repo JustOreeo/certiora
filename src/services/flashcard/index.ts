@@ -67,28 +67,56 @@ async function getDueCountForDeck(tenantId: string, userId: string, deckId: stri
 }
 
 export const flashcardService = {
-  async listDecks(tenantId: string, userId: string) {
-    const decks = await prisma.flashcardDeck.findMany({
-      where: { ...tenantScope(tenantId), userId },
-      include: {
-        _count: { select: { cards: true } },
-      },
-      orderBy: { updatedAt: "desc" },
-    });
+  async listDecks(
+    tenantId: string,
+    userId: string,
+    opts: { page?: number; pageSize?: number } = {}
+  ) {
+    const page = opts.page ?? 1;
+    const pageSize = opts.pageSize ?? 20;
+    const where = { ...tenantScope(tenantId), userId };
+
+    const [decks, total] = await Promise.all([
+      prisma.flashcardDeck.findMany({
+        where,
+        include: { _count: { select: { cards: true } } },
+        orderBy: { updatedAt: "desc" },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      prisma.flashcardDeck.count({ where }),
+    ]);
+
     const now = new Date();
-    const dueCounts = await Promise.all(
-      decks.map((d) =>
-        prisma.flashcardCardSrsState.count({
+    // Single groupBy for due counts instead of N+1
+    const deckIds = decks.map((d) => d.id);
+    const dueRows = deckIds.length > 0
+      ? await prisma.flashcardCardSrsState.groupBy({
+          by: ["cardId"],
           where: {
             ...tenantScope(tenantId),
             userId,
-            card: { deckId: d.id },
+            card: { deckId: { in: deckIds } },
             nextReviewAt: { lte: now },
           },
+          _count: true,
+        }).then(async () => {
+          // groupBy on cardId doesn't give us deckId, use raw aggregation
+          const rows = await prisma.$queryRaw<{ deckId: string; count: bigint }[]>`
+            SELECT fc."deckId", COUNT(*)::bigint as count
+            FROM "FlashcardCardSrsState" s
+            JOIN "FlashcardCard" fc ON fc.id = s."cardId"
+            WHERE s."tenantId" = ${tenantId}
+              AND s."userId" = ${userId}
+              AND fc."deckId" = ANY(${deckIds})
+              AND s."nextReviewAt" <= ${now}
+            GROUP BY fc."deckId"
+          `;
+          return new Map(rows.map((r) => [r.deckId, Number(r.count)]));
         })
-      )
-    );
-    return decks.map((d, i) => ({
+      : new Map<string, number>();
+
+    const items = decks.map((d) => ({
       id: d.id,
       name: d.name,
       description: d.description,
@@ -105,8 +133,10 @@ export const flashcardService = {
       createdAt: d.createdAt,
       updatedAt: d.updatedAt,
       cardCount: d._count.cards,
-      dueToday: dueCounts[i],
+      dueToday: dueRows.get(d.id) ?? 0,
     }));
+
+    return { items, total, page, pageSize };
   },
 
   async createDeck(tenantId: string, userId: string, input: CreateDeckInput) {
@@ -127,20 +157,58 @@ export const flashcardService = {
     const deck = await prisma.flashcardDeck.findFirst({
       where: { id: deckId, ...tenantScope(tenantId), userId },
       include: {
-        cards: { orderBy: { order: "asc", createdAt: "asc" } },
         _count: { select: { cards: true } },
         sourceDeck: { select: { version: true } },
+        tags: { include: { tag: { select: { id: true, name: true } } } },
       },
     });
     if (!deck) return null;
     const dueToday = await getDueCountForDeck(tenantId, userId, deckId);
-    const { _count, sourceDeck, ...rest } = deck;
+    const { _count, sourceDeck, tags, ...rest } = deck;
     return {
       ...rest,
       cardCount: _count.cards,
       dueToday,
       sourceDeck: sourceDeck ? { version: sourceDeck.version } : null,
+      tags: tags.map((t) => ({ id: t.tag.id, name: t.tag.name })),
     };
+  },
+
+  async listCardsInDeck(
+    tenantId: string,
+    userId: string,
+    deckId: string,
+    opts: { page?: number; pageSize?: number; search?: string } = {}
+  ) {
+    const deck = await assertDeckOwnership(tenantId, userId, deckId);
+    if (!deck) return null;
+
+    const page = opts.page ?? 1;
+    const pageSize = opts.pageSize ?? 20;
+    const search = opts.search?.trim();
+
+    const where: Prisma.FlashcardCardWhereInput = {
+      deckId,
+      ...tenantScope(tenantId),
+      ...(search && {
+        OR: [
+          { front: { contains: search, mode: "insensitive" } },
+          { back: { contains: search, mode: "insensitive" } },
+        ],
+      }),
+    };
+
+    const [cards, total] = await Promise.all([
+      prisma.flashcardCard.findMany({
+        where,
+        orderBy: [{ order: "asc" }, { createdAt: "asc" }],
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      prisma.flashcardCard.count({ where }),
+    ]);
+
+    return { items: cards, total, page, pageSize };
   },
 
   async updateDeck(tenantId: string, userId: string, deckId: string, input: UpdateDeckInput) {
@@ -267,6 +335,54 @@ export const flashcardService = {
     return "deleted";
   },
 
+  async addCardsBulk(
+    tenantId: string,
+    userId: string,
+    deckId: string,
+    cards: Array<{ front: string; back: string }>
+  ) {
+    const deck = await assertDeckOwnership(tenantId, userId, deckId);
+    if (!deck) return null;
+    if (cards.length === 0) return { created: 0, errors: [] };
+
+    const maxOrder = await prisma.flashcardCard
+      .aggregate({ where: { deckId }, _max: { order: true } })
+      .then((r) => r._max.order ?? -1);
+
+    const errors: Array<{ index: number; error: string }> = [];
+    const validCards: Array<{ front: string; back: string; order: number }> = [];
+
+    for (let i = 0; i < cards.length; i++) {
+      const front = cards[i].front.trim().slice(0, 1000);
+      const back = cards[i].back.trim().slice(0, 2000);
+      if (!front || !back) {
+        errors.push({ index: i, error: "Front and back are required" });
+        continue;
+      }
+      validCards.push({ front, back, order: maxOrder + 1 + validCards.length });
+    }
+
+    if (validCards.length === 0) return { created: 0, errors };
+
+    const now = new Date();
+    await prisma.$transaction(async (tx) => {
+      for (const vc of validCards) {
+        const card = await tx.flashcardCard.create({
+          data: { deckId, tenantId, front: vc.front, back: vc.back, order: vc.order },
+        });
+        await tx.flashcardCardSrsState.create({
+          data: { tenantId, userId, cardId: card.id, state: CardState.NEW, nextReviewAt: now },
+        });
+      }
+      await tx.flashcardDeck.update({
+        where: { id: deckId },
+        data: { version: { increment: 1 } },
+      });
+    });
+
+    return { created: validCards.length, errors };
+  },
+
   async generateShareCode(tenantId: string, userId: string, deckId: string) {
     const deck = await assertDeckOwnership(tenantId, userId, deckId);
     if (!deck) return null;
@@ -338,9 +454,15 @@ export const flashcardService = {
   async listLibrary(
     tenantId: string,
     userId: string,
-    options: { search?: string; sort?: "newest" | "most_imported" | "az"; source?: "ADMIN_SEEDED" | "student" }
+    options: {
+      search?: string;
+      sort?: "newest" | "most_imported" | "az";
+      source?: "ADMIN_SEEDED" | "student";
+      page?: number;
+      pageSize?: number;
+    }
   ) {
-    const { search = "", sort = "newest", source } = options;
+    const { search = "", sort = "newest", source, page = 1, pageSize = 20 } = options;
     const term = search.trim();
     const where: Prisma.FlashcardDeckWhereInput = {
       ...tenantScope(tenantId),
@@ -361,24 +483,28 @@ export const flashcardService = {
           ? [{ name: "asc" as const }]
           : [{ createdAt: "desc" as const }];
 
-    const decks = await prisma.flashcardDeck.findMany({
-      where,
-      include: {
-        _count: { select: { cards: true } },
-        user: { select: { name: true } },
-        tenant: { select: { name: true } },
-      },
-      orderBy,
-    });
+    const [decks, total, myImportedDeckIds] = await Promise.all([
+      prisma.flashcardDeck.findMany({
+        where,
+        include: {
+          _count: { select: { cards: true } },
+          user: { select: { name: true } },
+          tenant: { select: { name: true } },
+        },
+        orderBy,
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      prisma.flashcardDeck.count({ where }),
+      prisma.flashcardDeck
+        .findMany({
+          where: { ...tenantScope(tenantId), userId, sourceDeckId: { not: null } },
+          select: { sourceDeckId: true },
+        })
+        .then((rows) => new Set(rows.map((r) => r.sourceDeckId).filter(Boolean) as string[])),
+    ]);
 
-    const myImportedDeckIds = await prisma.flashcardDeck
-      .findMany({
-        where: { ...tenantScope(tenantId), userId, sourceDeckId: { not: null } },
-        select: { sourceDeckId: true },
-      })
-      .then((rows) => new Set(rows.map((r) => r.sourceDeckId).filter(Boolean) as string[]));
-
-    return decks.map((d) => ({
+    const items = decks.map((d) => ({
       id: d.id,
       name: d.name,
       description: d.description,
@@ -392,6 +518,8 @@ export const flashcardService = {
       isOwn: d.userId === userId,
       alreadyImported: myImportedDeckIds.has(d.id),
     }));
+
+    return { items, total, page, pageSize };
   },
 
   /**
@@ -1055,6 +1183,99 @@ export const flashcardService = {
   /**
    * List decks that have a custom retention target (for Settings Panel 3).
    */
+  // ——— Tags ———
+
+  async listTags(tenantId: string) {
+    const tags = await prisma.flashcardTag.findMany({
+      where: { tenantId },
+      include: { _count: { select: { decks: true } } },
+      orderBy: { name: "asc" },
+    });
+    return tags.map((t) => ({ id: t.id, name: t.name, deckCount: t._count.decks }));
+  },
+
+  async addTagToDeck(tenantId: string, userId: string, deckId: string, tagName: string) {
+    const deck = await assertDeckOwnership(tenantId, userId, deckId);
+    if (!deck) return null;
+    const name = tagName.trim().toLowerCase().slice(0, 50);
+    if (!name) return "validation";
+
+    // Find-or-create tag
+    let tag = await prisma.flashcardTag.findFirst({
+      where: { tenantId, name },
+    });
+    if (!tag) {
+      tag = await prisma.flashcardTag.create({
+        data: { tenantId, name },
+      });
+    }
+
+    // Check if already linked
+    const existing = await prisma.flashcardDeckTag.findFirst({
+      where: { deckId, tagId: tag.id },
+    });
+    if (existing) return { id: tag.id, name: tag.name };
+
+    await prisma.flashcardDeckTag.create({
+      data: { deckId, tagId: tag.id },
+    });
+    return { id: tag.id, name: tag.name };
+  },
+
+  // ——— Card reordering ———
+
+  async reorderCards(
+    tenantId: string,
+    userId: string,
+    deckId: string,
+    cardOrder: Array<{ cardId: string; order: number }>
+  ) {
+    const deck = await assertDeckOwnership(tenantId, userId, deckId);
+    if (!deck) return null;
+
+    await prisma.$transaction(
+      cardOrder.map((co) =>
+        prisma.flashcardCard.updateMany({
+          where: { id: co.cardId, deckId, ...tenantScope(tenantId) },
+          data: { order: co.order },
+        })
+      )
+    );
+    return "ok";
+  },
+
+  // ——— CSV export/import ———
+
+  async exportDeckAsCsv(tenantId: string, userId: string, deckId: string) {
+    const deck = await assertDeckOwnership(tenantId, userId, deckId);
+    if (!deck) return null;
+
+    const cards = await prisma.flashcardCard.findMany({
+      where: { deckId, ...tenantScope(tenantId) },
+      orderBy: [{ order: "asc" }, { createdAt: "asc" }],
+      select: { front: true, back: true, order: true },
+    });
+
+    const header = "front,back,order";
+    const rows = cards.map((c) => {
+      const front = `"${c.front.replace(/"/g, '""')}"`;
+      const back = `"${c.back.replace(/"/g, '""')}"`;
+      return `${front},${back},${c.order}`;
+    });
+    const csv = [header, ...rows].join("\n");
+
+    return { csv, deckName: deck.name, cardCount: cards.length };
+  },
+
+  async removeTagFromDeck(tenantId: string, userId: string, deckId: string, tagId: string) {
+    const deck = await assertDeckOwnership(tenantId, userId, deckId);
+    if (!deck) return null;
+    await prisma.flashcardDeckTag.deleteMany({
+      where: { deckId, tagId },
+    });
+    return "removed";
+  },
+
   async listDecksWithCustomRetention(tenantId: string, userId: string) {
     const decks = await prisma.flashcardDeck.findMany({
       where: {
@@ -1330,5 +1551,196 @@ export const adminFlashcardService = {
       where: { id: deckId },
       include: { _count: { select: { cards: true } } },
     });
+  },
+
+  /**
+   * Admin analytics: overview + per-deck + per-student flashcard usage stats.
+   */
+  async getStudentFlashcardAnalytics(tenantId: string) {
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
+    // Overview stats
+    const [totalStudents, reviewsLast30d, activeStudents7d] = await Promise.all([
+      prisma.user.count({
+        where: { tenantId, role: "STUDENT" },
+      }),
+      prisma.flashcardReviewLog.count({
+        where: { tenantId, reviewedAt: { gte: thirtyDaysAgo } },
+      }),
+      prisma.flashcardReviewLog
+        .findMany({
+          where: { tenantId, reviewedAt: { gte: sevenDaysAgo } },
+          select: { userId: true },
+          distinct: ["userId"],
+        })
+        .then((r) => r.length),
+    ]);
+
+    // Average retention across all reviews in last 30d
+    const retentionAgg = await prisma.flashcardReviewLog.aggregate({
+      where: {
+        tenantId,
+        reviewedAt: { gte: thirtyDaysAgo },
+        grade: { gte: 1 },
+      },
+      _avg: { grade: true },
+      _count: true,
+    });
+    // Approximate retention: grades 3+4 are "correct"
+    const correctReviews = await prisma.flashcardReviewLog.count({
+      where: {
+        tenantId,
+        reviewedAt: { gte: thirtyDaysAgo },
+        grade: { gte: 3 },
+      },
+    });
+    const avgRetention =
+      retentionAgg._count > 0 ? correctReviews / retentionAgg._count : 0;
+
+    // Per-deck stats (admin-seeded decks)
+    const adminDecks = await prisma.flashcardDeck.findMany({
+      where: adminDeckScope(tenantId),
+      select: { id: true, name: true, status: true },
+    });
+
+    const perDeck = await Promise.all(
+      adminDecks.map(async (deck) => {
+        const [studentsReached, totalReviews, correctCount, activeStudentsInDeck] =
+          await Promise.all([
+            prisma.flashcardDeck.count({
+              where: { ...tenantScope(tenantId), sourceDeckId: deck.id },
+            }),
+            prisma.flashcardReviewLog.count({
+              where: {
+                tenantId,
+                deck: { sourceDeckId: deck.id },
+                reviewedAt: { gte: thirtyDaysAgo },
+              },
+            }),
+            prisma.flashcardReviewLog.count({
+              where: {
+                tenantId,
+                deck: { sourceDeckId: deck.id },
+                reviewedAt: { gte: thirtyDaysAgo },
+                grade: { gte: 3 },
+              },
+            }),
+            prisma.flashcardReviewLog
+              .findMany({
+                where: {
+                  tenantId,
+                  deck: { sourceDeckId: deck.id },
+                  reviewedAt: { gte: sevenDaysAgo },
+                },
+                select: { userId: true },
+                distinct: ["userId"],
+              })
+              .then((r) => r.length),
+          ]);
+        return {
+          deckId: deck.id,
+          deckName: deck.name,
+          status: deck.status,
+          studentsReached,
+          totalReviews,
+          retention: totalReviews > 0 ? correctCount / totalReviews : 0,
+          activeStudents7d: activeStudentsInDeck,
+        };
+      })
+    );
+
+    // Per-student stats (top 50 by review count)
+    const studentReviewCounts: Array<{ userId: string; cnt: bigint }> =
+      await prisma.$queryRaw`
+        SELECT "userId", COUNT(*) as cnt
+        FROM "FlashcardReviewLog"
+        WHERE "tenantId" = ${tenantId}
+          AND "reviewedAt" >= ${thirtyDaysAgo}
+        GROUP BY "userId"
+        ORDER BY cnt DESC
+        LIMIT 50
+      `;
+
+    const studentIds = studentReviewCounts.map((s) => s.userId);
+    const students =
+      studentIds.length > 0
+        ? await prisma.user.findMany({
+            where: { id: { in: studentIds }, tenantId },
+            select: { id: true, name: true, email: true },
+          })
+        : [];
+    const studentMap = new Map(students.map((s) => [s.id, s]));
+
+    // Get correct counts and deck counts per student
+    const studentCorrectCounts: Array<{ userId: string; cnt: bigint }> =
+      studentIds.length > 0
+        ? await prisma.$queryRaw`
+            SELECT "userId", COUNT(*) as cnt
+            FROM "FlashcardReviewLog"
+            WHERE "tenantId" = ${tenantId}
+              AND "reviewedAt" >= ${thirtyDaysAgo}
+              AND "grade" >= 3
+              AND "userId" = ANY(${studentIds})
+            GROUP BY "userId"
+          `
+        : [];
+    const correctMap = new Map(
+      studentCorrectCounts.map((s) => [s.userId, Number(s.cnt)])
+    );
+
+    const studentDeckCounts: Array<{ userId: string; cnt: bigint }> =
+      studentIds.length > 0
+        ? await prisma.$queryRaw`
+            SELECT "userId", COUNT(*) as cnt
+            FROM "FlashcardDeck"
+            WHERE "tenantId" = ${tenantId}
+              AND "userId" = ANY(${studentIds})
+            GROUP BY "userId"
+          `
+        : [];
+    const deckCountMap = new Map(
+      studentDeckCounts.map((s) => [s.userId, Number(s.cnt)])
+    );
+
+    const lastReviewed: Array<{ userId: string; last: Date }> =
+      studentIds.length > 0
+        ? await prisma.$queryRaw`
+            SELECT "userId", MAX("reviewedAt") as last
+            FROM "FlashcardReviewLog"
+            WHERE "tenantId" = ${tenantId}
+              AND "userId" = ANY(${studentIds})
+            GROUP BY "userId"
+          `
+        : [];
+    const lastReviewedMap = new Map(
+      lastReviewed.map((s) => [s.userId, s.last])
+    );
+
+    const perStudent = studentReviewCounts.map((s) => {
+      const user = studentMap.get(s.userId);
+      const reviews = Number(s.cnt);
+      const correct = correctMap.get(s.userId) ?? 0;
+      return {
+        userId: s.userId,
+        name: user?.name ?? "Unknown",
+        email: user?.email ?? "",
+        decksCount: deckCountMap.get(s.userId) ?? 0,
+        reviews,
+        retention: reviews > 0 ? correct / reviews : 0,
+        lastReviewed: lastReviewedMap.get(s.userId) ?? null,
+      };
+    });
+
+    return {
+      overview: {
+        totalStudents,
+        reviewsLast30d,
+        avgRetention,
+        activeStudents7d,
+      },
+      perDeck,
+      perStudent,
+    };
   },
 };

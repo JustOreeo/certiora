@@ -2,16 +2,24 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { flashcardService } from "@/services/flashcard";
-import { createDeckSchema } from "@/types/schemas";
+import { createDeckSchema, paginationSchema } from "@/types/schemas";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session?.tenantId || !session.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   try {
-    const decks = await flashcardService.listDecks(session.tenantId, session.user.id);
-    return NextResponse.json(decks);
+    const sp = request.nextUrl.searchParams;
+    const { page, pageSize } = paginationSchema.parse({
+      page: sp.get("page") ?? undefined,
+      pageSize: sp.get("pageSize") ?? undefined,
+    });
+    const result = await flashcardService.listDecks(session.tenantId, session.user.id, {
+      page,
+      pageSize,
+    });
+    return NextResponse.json(result);
   } catch (error) {
     console.error("Flashcard decks list error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });

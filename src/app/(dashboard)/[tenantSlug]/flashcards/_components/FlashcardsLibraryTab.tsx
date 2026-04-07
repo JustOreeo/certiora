@@ -55,25 +55,32 @@ export function FlashcardsLibraryTab({
   onNavigateToDecks?: () => void;
 }) {
   const [decks, setDecks] = useState<LibraryDeckItem[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [searchInput, setSearchInput] = useState("");
   const [sort, setSort] = useState<"newest" | "most_imported" | "az">("newest");
   const [sourceFilter, setSourceFilter] = useState<"" | "ADMIN_SEEDED" | "student">("");
   const [importDialogDeckId, setImportDialogDeckId] = useState<string | null>(null);
+  const pageSize = 20;
 
   const debouncedSearch = useDebounce(searchInput.trim(), 300);
 
-  const loadLibrary = useCallback(async () => {
+  const loadLibrary = useCallback(async (p = 1) => {
     setLoading(true);
     try {
       const params = new URLSearchParams();
       if (debouncedSearch) params.set("search", debouncedSearch);
       params.set("sort", sort);
       if (sourceFilter) params.set("source", sourceFilter);
+      params.set("page", String(p));
+      params.set("pageSize", String(pageSize));
       const res = await fetch(`/api/flashcards/library?${params.toString()}`);
       if (!res.ok) throw new Error("Failed to load library");
       const data = await res.json();
-      setDecks(Array.isArray(data) ? data : []);
+      setDecks(data.items ?? []);
+      setTotal(data.total ?? 0);
+      setPage(data.page ?? 1);
     } catch (e) {
       console.error(e);
       setDecks([]);
@@ -83,7 +90,7 @@ export function FlashcardsLibraryTab({
   }, [debouncedSearch, sort, sourceFilter]);
 
   useEffect(() => {
-    loadLibrary();
+    loadLibrary(1);
   }, [loadLibrary]);
 
   const handleImportDone = (deckId: string | null) => {
@@ -232,6 +239,32 @@ export function FlashcardsLibraryTab({
             </li>
           ))}
         </ul>
+      )}
+
+      {total > pageSize && (
+        <div className="flex items-center justify-between pt-2">
+          <span className="text-xs text-secondary">
+            Showing {(page - 1) * pageSize + 1}–{Math.min(page * pageSize, total)} of {total}
+          </span>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              disabled={page <= 1}
+              onClick={() => loadLibrary(page - 1)}
+              className="inline-flex h-8 items-center px-3 rounded-lg text-xs font-medium border border-border bg-surface-card hover:bg-surface-base disabled:opacity-40"
+            >
+              Previous
+            </button>
+            <button
+              type="button"
+              disabled={page * pageSize >= total}
+              onClick={() => loadLibrary(page + 1)}
+              className="inline-flex h-8 items-center px-3 rounded-lg text-xs font-medium border border-border bg-surface-card hover:bg-surface-base disabled:opacity-40"
+            >
+              Next
+            </button>
+          </div>
+        </div>
       )}
 
       <ImportFromLibraryDialog

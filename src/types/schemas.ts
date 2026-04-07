@@ -104,6 +104,42 @@ export const importDeckSchema = z
     message: "Either shareCode or deckId is required",
   });
 
+// ——— Flashcard pagination ———
+
+export const deckCardsQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(20),
+  search: z.string().optional(),
+});
+
+export const bulkCreateCardsSchema = z.object({
+  cards: z
+    .array(
+      z.object({
+        front: z.string().min(1).max(1000).transform((s) => s.trim()),
+        back: z.string().min(1).max(2000).transform((s) => s.trim()),
+      })
+    )
+    .min(1)
+    .max(100),
+});
+
+export const undoGradeSchema = z.object({
+  reviewLogId: z.string().min(1),
+});
+
+export const reorderCardsSchema = z.object({
+  cardOrder: z
+    .array(
+      z.object({
+        cardId: z.string().min(1),
+        order: z.number().int().min(0),
+      })
+    )
+    .min(1)
+    .max(500),
+});
+
 // ——— Admin flashcard decks (Phase 9) ———
 
 export const adminCreateDeckSchema = z.object({

@@ -2,9 +2,33 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { flashcardService } from "@/services/flashcard";
-import { createCardSchema } from "@/types/schemas";
+import { createCardSchema, deckCardsQuerySchema } from "@/types/schemas";
 
 type Params = { params: Promise<{ deckId: string }> };
+
+export async function GET(request: NextRequest, { params }: Params) {
+  const session = await getServerSession(authOptions);
+  if (!session?.tenantId || !session.user?.id) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  const { deckId } = await params;
+  const sp = request.nextUrl.searchParams;
+  const query = deckCardsQuerySchema.parse({
+    page: sp.get("page") ?? undefined,
+    pageSize: sp.get("pageSize") ?? undefined,
+    search: sp.get("search") ?? undefined,
+  });
+  const result = await flashcardService.listCardsInDeck(
+    session.tenantId,
+    session.user.id,
+    deckId,
+    query
+  );
+  if (!result) {
+    return NextResponse.json({ error: "Deck not found" }, { status: 404 });
+  }
+  return NextResponse.json(result);
+}
 
 export async function POST(request: NextRequest, { params }: Params) {
   const session = await getServerSession(authOptions);
