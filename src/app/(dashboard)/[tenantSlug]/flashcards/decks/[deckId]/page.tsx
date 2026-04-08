@@ -181,6 +181,7 @@ export default function DeckDetailPage() {
   const [deckToast, setDeckToast] = useState<string | null>(null);
   const [tagInput, setTagInput] = useState("");
   const [addingTag, setAddingTag] = useState(false);
+  const [viewMode, setViewMode] = useState<"cards" | "table">("cards");
   const cardPageSize = 20;
 
   const sensors = useSensors(
@@ -717,48 +718,89 @@ export default function DeckDetailPage() {
           )}
         </div>
 
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
-          <h2 className="text-lg font-medium text-body">Cards</h2>
-          <div className="flex flex-wrap items-center gap-2">
-            <input
-              type="search"
-              value={cardSearch}
-              onChange={(e) => setCardSearch(e.target.value)}
-              placeholder="Search cards…"
-              className="px-3 py-2 rounded-lg border border-border bg-surface-base text-body text-sm w-48"
-              aria-label="Search cards"
-            />
-            {deck.cardCount > 0 && (
+        {/* Sticky cards toolbar */}
+        <div className="sticky top-0 z-20 bg-surface-base/95 backdrop-blur-sm -mx-4 sm:-mx-6 md:-mx-8 px-4 sm:px-6 md:px-8 py-3 border-b border-border mb-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <h2 className="text-lg font-medium text-body">Cards</h2>
+              {/* View toggle */}
+              <div className="flex rounded-lg border border-border bg-surface-base p-0.5" role="group" aria-label="View mode">
+                <button
+                  type="button"
+                  onClick={() => setViewMode("cards")}
+                  className={`h-8 px-3 rounded-md text-xs font-medium transition-colors cursor-pointer ${
+                    viewMode === "cards"
+                      ? "bg-primary text-inverse"
+                      : "text-secondary hover:text-body hover:bg-surface-card"
+                  }`}
+                  aria-pressed={viewMode === "cards"}
+                >
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" className="inline mr-1" aria-hidden>
+                    <rect x="1" y="1" width="14" height="6" rx="1.5" />
+                    <rect x="1" y="9" width="14" height="6" rx="1.5" />
+                  </svg>
+                  Cards
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode("table")}
+                  className={`h-8 px-3 rounded-md text-xs font-medium transition-colors cursor-pointer ${
+                    viewMode === "table"
+                      ? "bg-primary text-inverse"
+                      : "text-secondary hover:text-body hover:bg-surface-card"
+                  }`}
+                  aria-pressed={viewMode === "table"}
+                >
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" className="inline mr-1" aria-hidden>
+                    <rect x="1" y="1" width="14" height="3" rx="1" />
+                    <rect x="1" y="5.5" width="14" height="3" rx="1" />
+                    <rect x="1" y="10" width="14" height="3" rx="1" />
+                  </svg>
+                  Table
+                </button>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                type="search"
+                value={cardSearch}
+                onChange={(e) => setCardSearch(e.target.value)}
+                placeholder="Search cards…"
+                className="px-3 py-2 rounded-lg border border-border bg-surface-base text-body text-sm w-48"
+                aria-label="Search cards"
+              />
+              {deck.cardCount > 0 && (
+                <button
+                  type="button"
+                  disabled={exporting}
+                  onClick={handleExportCsv}
+                  className="h-10 px-3 rounded-lg text-sm font-medium border border-border bg-surface-card hover:bg-surface-base whitespace-nowrap disabled:opacity-50 cursor-pointer"
+                >
+                  {exporting ? "Exporting…" : "Export CSV"}
+                </button>
+              )}
               <button
                 type="button"
-                disabled={exporting}
-                onClick={handleExportCsv}
-                className="h-10 px-3 rounded-lg text-sm font-medium border border-border bg-surface-card hover:bg-surface-base whitespace-nowrap disabled:opacity-50"
+                onClick={() => setCsvImportOpen(true)}
+                className="h-10 px-3 rounded-lg text-sm font-medium border border-border bg-surface-card hover:bg-surface-base whitespace-nowrap cursor-pointer"
               >
-                {exporting ? "Exporting…" : "Export CSV"}
+                Import CSV
               </button>
-            )}
-            <button
-              type="button"
-              onClick={() => setCsvImportOpen(true)}
-              className="h-10 px-3 rounded-lg text-sm font-medium border border-border bg-surface-card hover:bg-surface-base whitespace-nowrap"
-            >
-              Import CSV
-            </button>
-            <button
-              type="button"
-              onClick={() => setBulkEditorOpen(true)}
-              className="h-10 px-3 rounded-lg text-sm font-medium border border-border bg-surface-card hover:bg-surface-base whitespace-nowrap"
-            >
-              Bulk Add
-            </button>
-            <button
-              type="button"
-              onClick={handleAddCard}
-              className="h-10 px-4 rounded-lg text-sm font-semibold bg-primary text-inverse hover:bg-primary-hover whitespace-nowrap"
-            >
-              Add Card
-            </button>
+              <button
+                type="button"
+                onClick={() => setBulkEditorOpen(true)}
+                className="h-10 px-3 rounded-lg text-sm font-medium border border-border bg-surface-card hover:bg-surface-base whitespace-nowrap cursor-pointer"
+              >
+                Bulk Add
+              </button>
+              <button
+                type="button"
+                onClick={handleAddCard}
+                className="h-10 px-4 rounded-lg text-sm font-semibold bg-primary text-inverse hover:bg-primary-hover whitespace-nowrap cursor-pointer"
+              >
+                Add Card
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -797,21 +839,80 @@ export default function DeckDetailPage() {
         </div>
       ) : !cardsLoading && cards.length > 0 ? (
         <>
-          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-            <SortableContext items={cards.map((c) => c.id)} strategy={verticalListSortingStrategy}>
-              <ul className="space-y-3">
-                {cards.map((card) => (
-                  <SortableCard
-                    key={card.id}
-                    card={card}
-                    onEdit={() => handleEditCard(card)}
-                    onDelete={() => handleDeleteCard(card)}
-                    deleting={deletingCardId === card.id}
-                  />
-                ))}
-              </ul>
-            </SortableContext>
-          </DndContext>
+          {/* Card view — drag-and-drop sortable list */}
+          {viewMode === "cards" && (
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+              <SortableContext items={cards.map((c) => c.id)} strategy={verticalListSortingStrategy}>
+                <ul className="space-y-3">
+                  {cards.map((card) => (
+                    <SortableCard
+                      key={card.id}
+                      card={card}
+                      onEdit={() => handleEditCard(card)}
+                      onDelete={() => handleDeleteCard(card)}
+                      deleting={deletingCardId === card.id}
+                    />
+                  ))}
+                </ul>
+              </SortableContext>
+            </DndContext>
+          )}
+
+          {/* Table view — compact rows */}
+          {viewMode === "table" && (
+            <div className="bg-surface-card border border-border rounded-xl shadow-sm overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border bg-surface-base/50">
+                      <th scope="col" className="text-left py-3 px-4 font-medium text-body w-[4%]">#</th>
+                      <th scope="col" className="text-left py-3 px-4 font-medium text-body w-[40%]">Front</th>
+                      <th scope="col" className="text-left py-3 px-4 font-medium text-body w-[40%]">Back</th>
+                      <th scope="col" className="text-right py-3 px-4 font-medium text-body w-[16%]">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {cards.map((card, i) => (
+                      <tr key={card.id} className="border-b border-border last:border-0 hover:bg-surface-base/50 transition-colors">
+                        <td className="py-3 px-4 text-secondary tabular-nums">
+                          {(cardPage - 1) * cardPageSize + i + 1}
+                        </td>
+                        <td className="py-3 px-4 text-body">
+                          <span className="line-clamp-2">{card.front.length > 100 ? `${card.front.slice(0, 100)}…` : card.front}</span>
+                          {card.isOrphaned && (
+                            <span className="text-xs text-secondary italic ml-1">orphaned</span>
+                          )}
+                        </td>
+                        <td className="py-3 px-4 text-secondary">
+                          <span className="line-clamp-2">{card.back.length > 100 ? `${card.back.slice(0, 100)}…` : card.back}</span>
+                        </td>
+                        <td className="py-3 px-4 text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <button
+                              type="button"
+                              onClick={() => handleEditCard(card)}
+                              className="h-8 px-2.5 rounded-md text-xs font-medium border border-border bg-surface-base hover:bg-surface-card cursor-pointer"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              disabled={deletingCardId === card.id}
+                              onClick={() => handleDeleteCard(card)}
+                              className="h-8 px-2.5 rounded-md text-xs font-medium text-error border border-error/30 hover:bg-error/10 disabled:opacity-50 cursor-pointer"
+                            >
+                              {deletingCardId === card.id ? "…" : "Delete"}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
           {cardTotal > cardPageSize && (
             <div className="flex items-center justify-between pt-4">
               <span className="text-xs text-secondary">
