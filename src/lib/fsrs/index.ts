@@ -23,3 +23,16 @@ export {
 export { seedTenantFsrsParams, defaultFsrsW } from "./seed";
 export { optimize, computeLoss } from "./optimizer";
 export type { ReviewLogRow } from "./optimizer";
+export {
+  computePhase,
+  computeNewCardLimit,
+  computeReviewIntensity,
+} from "./review-intensity";
+export type {
+  ReviewIntensityPhase,
+  PhaseConfig,
+  ReviewIntensityResult,
+} from "./review-intensity";
+// computeCoverage is intentionally NOT re-exported here — it imports prisma
+// and would break client-side bundles. Import directly from "./coverage" in server code.
+export type { CoverageResult } from "./coverage";

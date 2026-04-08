@@ -70,7 +70,9 @@ export const updateDeckSchema = z.object({
 });
 
 export const patchSettingsSchema = z.object({
-  retentionTarget: z.number().min(0.7).max(0.97),
+  retentionTarget: z.number().min(0.7).max(0.97).optional(),
+  examDate: z.string().datetime().nullable().optional(),
+  retentionManualOverride: z.boolean().optional(),
 });
 
 export const createCardSchema = z.object({

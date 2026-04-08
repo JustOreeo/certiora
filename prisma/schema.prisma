@@ -622,6 +622,8 @@ model FsrsParams {
   isOptimized              Boolean   @default(false)
   optimizedAt              DateTime?
   reviewCountAtOptimization Int?
+  examDate                 DateTime?               // student's board exam date (account-level)
+  retentionManualOverride  Boolean   @default(false) // true = student explicitly set retention while exam mode active
   createdAt                DateTime  @default(now())
   updatedAt                DateTime  @updatedAt
 
