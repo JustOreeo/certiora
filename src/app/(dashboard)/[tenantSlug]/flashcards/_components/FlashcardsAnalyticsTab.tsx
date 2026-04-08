@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { SourceBadge } from "./SourceBadge";
+import { Spinner } from "@/components/ui/Spinner";
 
 export type DeckSource = "PERSONAL" | "SHARED" | "ADMIN_SEEDED" | "EXAM_GENERATED" | null;
 
@@ -45,15 +46,6 @@ export type FlashcardAnalytics = {
   decks: AnalyticsDeck[];
   reviewHistory: AnalyticsReviewDay[];
 };
-
-function Spinner() {
-  return (
-    <svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none">
-      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeOpacity="0.25" />
-      <path d="M4 12a8 8 0 018-8" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
-    </svg>
-  );
-}
 
 function StatCard({
   label,
@@ -104,10 +96,8 @@ function formatTooltipDay(dateStr: string): string {
 
 export function FlashcardsAnalyticsTab({
   tenantSlug,
-  onNavigateToReview,
 }: {
   tenantSlug: string;
-  onNavigateToReview?: () => void;
 }) {
   const [data, setData] = useState<FlashcardAnalytics | null>(null);
   const [loading, setLoading] = useState(true);
@@ -165,22 +155,12 @@ export function FlashcardsAnalyticsTab({
         <p className="text-sm text-secondary mb-4">
           Take exams or create custom decks to build your card collection.
         </p>
-        {onNavigateToReview ? (
-          <button
-            type="button"
-            onClick={onNavigateToReview}
-            className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
-          >
-            Go to Review
-          </button>
-        ) : (
-          <Link
-            href={`/${tenantSlug}/flashcards`}
-            className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
-          >
-            Go to Review
-          </Link>
-        )}
+        <Link
+          href={`/${tenantSlug}/flashcards`}
+          className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
+        >
+          Back to Flashcards
+        </Link>
       </div>
     );
   }
@@ -220,24 +200,12 @@ export function FlashcardsAnalyticsTab({
           <p className="text-sm text-secondary mb-1">Cards at risk</p>
           <p className="text-xl font-semibold text-body">{overall.cardsAtRisk}</p>
           {overall.cardsAtRisk > 0 && (
-            <>
-              {onNavigateToReview ? (
-                <button
-                  type="button"
-                  onClick={onNavigateToReview}
-                  className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline mt-1"
-                >
-                  Review now →
-                </button>
-              ) : (
-                <Link
-                  href={`/${tenantSlug}/flashcards`}
-                  className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline mt-1"
-                >
-                  Review now →
-                </Link>
-              )}
-            </>
+            <Link
+              href={`/${tenantSlug}/flashcards/study`}
+              className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline mt-1"
+            >
+              Review now
+            </Link>
           )}
         </div>
       </div>
@@ -308,14 +276,14 @@ export function FlashcardsAnalyticsTab({
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border bg-surface-base/50">
-                  <th className="text-left py-3 px-4 font-medium text-body">Deck</th>
-                  <th className="text-right py-3 px-4 font-medium text-body">Total</th>
-                  <th className="text-right py-3 px-4 font-medium text-body">New</th>
-                  <th className="text-right py-3 px-4 font-medium text-body">Learning</th>
-                  <th className="text-right py-3 px-4 font-medium text-body">Mature</th>
-                  <th className="text-right py-3 px-4 font-medium text-body">Avg. Stability</th>
-                  <th className="text-right py-3 px-4 font-medium text-body">Retention</th>
-                  <th className="text-right py-3 px-4 font-medium text-body">Due today</th>
+                  <th scope="col" className="text-left py-3 px-4 font-medium text-body">Deck</th>
+                  <th scope="col" className="text-right py-3 px-4 font-medium text-body">Total</th>
+                  <th scope="col" className="text-right py-3 px-4 font-medium text-body">New</th>
+                  <th scope="col" className="text-right py-3 px-4 font-medium text-body">Learning</th>
+                  <th scope="col" className="text-right py-3 px-4 font-medium text-body">Mature</th>
+                  <th scope="col" className="text-right py-3 px-4 font-medium text-body">Avg. Stability</th>
+                  <th scope="col" className="text-right py-3 px-4 font-medium text-body">Retention</th>
+                  <th scope="col" className="text-right py-3 px-4 font-medium text-body">Due today</th>
                 </tr>
               </thead>
               <tbody>
