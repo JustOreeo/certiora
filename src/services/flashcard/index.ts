@@ -494,6 +494,7 @@ export const flashcardService = {
     const where: Prisma.FlashcardDeckWhereInput = {
       ...tenantScope(tenantId),
       isPublic: true,
+      sourceDeckId: null, // exclude imported copies — only originals belong in the library
       ...(source === "ADMIN_SEEDED" && { source: "ADMIN_SEEDED" }),
       ...(source === "student" && { source: { not: "ADMIN_SEEDED" } }),
       ...(term && {
