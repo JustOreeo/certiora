@@ -116,25 +116,48 @@ export const flashcardService = {
         })
       : new Map<string, number>();
 
-    const items = decks.map((d) => ({
-      id: d.id,
-      name: d.name,
-      description: d.description,
-      source: d.source,
-      status: d.status,
-      isPublic: d.isPublic,
-      version: d.version,
-      sourceDeckId: d.sourceDeckId,
-      importedAtVersion: d.importedAtVersion,
-      shareCode: d.shareCode,
-      shareCodeCreatedAt: d.shareCodeCreatedAt,
-      retentionTarget: d.retentionTarget,
-      suggestedRetentionTarget: d.suggestedRetentionTarget,
-      createdAt: d.createdAt,
-      updatedAt: d.updatedAt,
-      cardCount: d._count.cards,
-      dueToday: dueRows.get(d.id) ?? 0,
-    }));
+    // Fetch current version for source decks of imported decks (update check)
+    const sourceDeckIds = decks
+      .filter((d) => d.sourceDeckId)
+      .map((d) => d.sourceDeckId!);
+    const sourceDeckVersions =
+      sourceDeckIds.length > 0
+        ? await prisma.flashcardDeck
+            .findMany({
+              where: { id: { in: sourceDeckIds } },
+              select: { id: true, version: true },
+            })
+            .then((rows) => new Map(rows.map((r) => [r.id, r.version])))
+        : new Map<string, number>();
+
+    const items = decks.map((d) => {
+      const sourceVersion = d.sourceDeckId
+        ? sourceDeckVersions.get(d.sourceDeckId) ?? null
+        : null;
+      return {
+        id: d.id,
+        name: d.name,
+        description: d.description,
+        source: d.source,
+        status: d.status,
+        isPublic: d.isPublic,
+        version: d.version,
+        sourceDeckId: d.sourceDeckId,
+        importedAtVersion: d.importedAtVersion,
+        shareCode: d.shareCode,
+        shareCodeCreatedAt: d.shareCodeCreatedAt,
+        retentionTarget: d.retentionTarget,
+        suggestedRetentionTarget: d.suggestedRetentionTarget,
+        createdAt: d.createdAt,
+        updatedAt: d.updatedAt,
+        cardCount: d._count.cards,
+        dueToday: dueRows.get(d.id) ?? 0,
+        hasUpdate:
+          sourceVersion !== null &&
+          d.importedAtVersion !== null &&
+          sourceVersion > d.importedAtVersion,
+      };
+    });
 
     return { items, total, page, pageSize };
   },

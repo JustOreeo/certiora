@@ -7,6 +7,7 @@ import { SourceBadge } from "./SourceBadge";
 import { CreateDeckModal } from "./CreateDeckModal";
 import { ImportDeckDialog } from "./ImportDeckDialog";
 import { Spinner } from "@/components/ui/Spinner";
+import { DeckUpdateDiffModal } from "./DeckUpdateDiffModal";
 
 function LockIcon({ className }: { className?: string }) {
   return (
@@ -42,6 +43,7 @@ export type DeckListItem = {
   updatedAt: string;
   cardCount: number;
   dueToday: number;
+  hasUpdate?: boolean;
 };
 
 
@@ -53,6 +55,7 @@ export function FlashcardsMyDecksTab({ tenantSlug }: { tenantSlug: string }) {
   const [createOpen, setCreateOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [updateDeckId, setUpdateDeckId] = useState<string | null>(null);
   const pageSize = 20;
 
   const loadDecks = async (p = page) => {
@@ -199,6 +202,21 @@ export function FlashcardsMyDecksTab({ tenantSlug }: { tenantSlug: string }) {
                       </>
                     )}
                   </span>
+                  {deck.hasUpdate && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setUpdateDeckId(deck.id);
+                      }}
+                      className="inline-flex items-center gap-1 text-xs font-semibold rounded-full px-2 py-0.5 bg-info-bg border border-info-border text-info hover:bg-info/10 transition-colors cursor-pointer"
+                    >
+                      <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden>
+                        <path d="M8 1.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13zM0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8zm9-3a1 1 0 1 1-2 0 1 1 0 0 1 2 0zM8 7a.75.75 0 0 1 .75.75v3.5a.75.75 0 0 1-1.5 0v-3.5A.75.75 0 0 1 8 7z" />
+                      </svg>
+                      Update available
+                    </button>
+                  )}
                 </div>
                 <div className="flex flex-wrap items-center gap-3 text-xs text-secondary">
                   <span>{deck.cardCount} cards</span>
@@ -286,6 +304,15 @@ export function FlashcardsMyDecksTab({ tenantSlug }: { tenantSlug: string }) {
 
       <CreateDeckModal open={createOpen} onClose={() => setCreateOpen(false)} onDone={handleCreateDone} />
       <ImportDeckDialog open={importOpen} onClose={() => setImportOpen(false)} onDone={handleImportDone} />
+      <DeckUpdateDiffModal
+        open={!!updateDeckId}
+        deckId={updateDeckId ?? ""}
+        onClose={() => setUpdateDeckId(null)}
+        onApplied={() => {
+          setUpdateDeckId(null);
+          loadDecks();
+        }}
+      />
     </div>
   );
 }
