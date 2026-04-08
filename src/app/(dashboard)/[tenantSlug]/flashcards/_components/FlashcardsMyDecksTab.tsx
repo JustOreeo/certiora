@@ -165,16 +165,30 @@ export function FlashcardsMyDecksTab({ tenantSlug }: { tenantSlug: string }) {
 
       {decks.length > 0 && (
         <ul className="space-y-3">
-          {decks.map((deck) => (
+          {decks.map((deck, i) => (
             <li
               key={deck.id}
-              className="bg-surface-card border border-border rounded-xl p-4 shadow-sm flex flex-wrap items-center gap-3"
+              className={`bg-surface-card border rounded-xl p-4 shadow-sm flex flex-wrap items-center gap-3 transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 anim-stagger ${
+                deck.dueToday > 0 ? "border-l-4 border-l-primary border-border" : "border-border"
+              }`}
+              style={{ animationDelay: `${Math.min(i, 9) * 40}ms` }}
             >
+              {/* Deck color avatar */}
+              <div
+                className="w-10 h-10 rounded-lg flex items-center justify-center text-inverse font-bold text-sm shrink-0"
+                style={{
+                  backgroundColor: [
+                    "#4B4EFC", "#676AFF", "#8D90FF", "#3D40E3", "#2F32C9", "#B3B5FF"
+                  ][deck.id.charCodeAt(0) % 6],
+                }}
+              >
+                {deck.name.charAt(0).toUpperCase()}
+              </div>
               <div className="flex-1 min-w-0">
                 <div className="flex flex-wrap items-center gap-2 mb-1">
                   <Link
                     href={`/${tenantSlug}/flashcards/decks/${deck.id}`}
-                    className="font-medium text-body hover:underline truncate"
+                    className="font-medium text-body hover:text-primary truncate transition-colors"
                   >
                     {deck.name}
                   </Link>
@@ -195,8 +209,12 @@ export function FlashcardsMyDecksTab({ tenantSlug }: { tenantSlug: string }) {
                 </div>
                 <div className="flex flex-wrap items-center gap-3 text-xs text-secondary">
                   <span>{deck.cardCount} cards</span>
-                  {deck.dueToday > 0 && (
-                    <span className="font-medium text-primary">{deck.dueToday} due today</span>
+                  {deck.dueToday > 0 ? (
+                    <span className="font-semibold bg-primary/10 text-primary rounded-full px-2 py-0.5">
+                      {deck.dueToday} due today
+                    </span>
+                  ) : (
+                    <span className="text-muted">No cards due</span>
                   )}
                   {deck.shareCode ? (
                     <span className="font-mono">{deck.shareCode}</span>
@@ -205,27 +223,40 @@ export function FlashcardsMyDecksTab({ tenantSlug }: { tenantSlug: string }) {
                   )}
                 </div>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                {deck.dueToday > 0 && (
+                  <Link
+                    href={`/${tenantSlug}/flashcards/study?deckId=${deck.id}`}
+                    className="inline-flex h-9 items-center gap-1.5 px-3 rounded-lg text-sm font-semibold bg-primary text-inverse hover:bg-primary-hover transition-colors"
+                  >
+                    Study
+                    <span className="bg-white/20 rounded-full px-1.5 py-0.5 text-[11px]">
+                      {deck.dueToday}
+                    </span>
+                  </Link>
+                )}
+                {deck.cardCount > 0 && (
+                  <Link
+                    href={`/${tenantSlug}/flashcards/study?deckId=${deck.id}&mode=cram`}
+                    className="inline-flex h-9 items-center px-3 rounded-lg text-sm font-medium border border-border bg-surface-base hover:bg-surface-card transition-colors"
+                  >
+                    Cram
+                  </Link>
+                )}
                 <Link
                   href={`/${tenantSlug}/flashcards/decks/${deck.id}`}
-                  className="inline-flex h-9 items-center px-3 rounded-lg text-sm font-medium border border-border bg-surface-base hover:bg-surface-card"
+                  className="inline-flex h-9 items-center px-3 rounded-lg text-sm font-medium border border-border bg-surface-base hover:bg-surface-card transition-colors"
                 >
-                  Edit
-                </Link>
-                <Link
-                  href={`/${tenantSlug}/flashcards/decks/${deck.id}#share`}
-                  className="inline-flex h-9 items-center px-3 rounded-lg text-sm font-medium border border-border bg-surface-base hover:bg-surface-card"
-                >
-                  Share
+                  Manage
                 </Link>
                 {canDelete(deck) && (
                   <button
                     type="button"
                     disabled={deletingId === deck.id}
                     onClick={() => handleDelete(deck)}
-                    className="inline-flex h-9 items-center px-3 rounded-lg text-sm font-medium border border-error/30 text-error hover:bg-error/10 disabled:opacity-50"
+                    className="inline-flex h-9 items-center px-3 rounded-lg text-sm font-medium border border-error/30 text-error hover:bg-error/10 disabled:opacity-50 transition-colors"
                   >
-                    {deletingId === deck.id ? "…" : "Delete"}
+                    {deletingId === deck.id ? "..." : "Delete"}
                   </button>
                 )}
               </div>
