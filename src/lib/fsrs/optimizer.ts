@@ -140,7 +140,7 @@ export function computeLoss(
   return bceLoss(pairs);
 }
 
-/** Numerical gradient of loss w.r.t. w (central difference). */
+/** Numerical gradient of loss w.r.t. w (forward difference). */
 function numericalGradient(
   logs: ReviewLogRow[],
   w: number[],
