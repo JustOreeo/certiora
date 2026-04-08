@@ -709,7 +709,13 @@ export const flashcardService = {
     const updatedCards: { imported: { id: string; front: string; back: string }; source: { id: string; front: string; back: string } }[] = [];
     for (const src of sourceDeck.cards) {
       const imp = importerBySourceId.get(src.id);
-      if (imp && (imp.front !== src.front || imp.back !== src.back)) {
+      if (!imp) continue;
+      const contentDiffers = imp.front !== src.front || imp.back !== src.back;
+      // Only flag as "updated" if the source card was modified after the
+      // imported copy was last synced. This avoids false positives when the
+      // importer edits their own copy without the source changing.
+      const sourceChangedSinceSync = src.updatedAt > imp.updatedAt;
+      if (contentDiffers && sourceChangedSinceSync) {
         updatedCards.push({
           imported: { id: imp.id, front: imp.front, back: imp.back },
           source: { id: src.id, front: src.front, back: src.back },
