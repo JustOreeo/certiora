@@ -916,7 +916,7 @@ export default function DeckDetailPage() {
           )}
 
           {/* Pagination */}
-          {cardTotal > cardPageSize && (() => {
+          {cardTotal > 10 && (() => {
             const totalPages = Math.ceil(cardTotal / cardPageSize);
             // Build page numbers: show up to 5 pages centered around current
             const pages: (number | "…")[] = [];
