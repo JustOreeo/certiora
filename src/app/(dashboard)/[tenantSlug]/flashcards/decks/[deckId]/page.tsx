@@ -434,7 +434,7 @@ export default function DeckDetailPage() {
       const res = await fetch(`/api/flashcards/decks/${deckId}/cards/reorder`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cardOrder: reordered.map((c) => c.id) }),
+        body: JSON.stringify({ cardOrder: reordered.map((c, i) => ({ cardId: c.id, order: i })) }),
       });
       if (!res.ok) {
         showDeckToast("Reorder failed");
