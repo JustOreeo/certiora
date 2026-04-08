@@ -38,14 +38,16 @@ type Summary = {
 
 const GRADE_BUTTONS: {
   label: string;
+  emoji: string;
   grade: 1 | 2 | 3 | 4;
   key: string;
-  className: string;
+  border: string;
+  hover: string;
 }[] = [
-  { label: "Again", grade: 1, key: "1", className: "bg-error-bg text-error border-error-border" },
-  { label: "Hard", grade: 2, key: "2", className: "bg-warning-bg text-warning border-warning-border" },
-  { label: "Good", grade: 3, key: "3", className: "bg-success-bg text-success border-success-border" },
-  { label: "Easy", grade: 4, key: "4", className: "bg-primary text-inverse border-primary" },
+  { label: "Not yet", emoji: "❗", grade: 1, key: "1", border: "border-red-300", hover: "hover:bg-red-50" },
+  { label: "Almost had it", emoji: "🤔", grade: 2, key: "2", border: "border-orange-300", hover: "hover:bg-orange-50" },
+  { label: "I remember this", emoji: "👍", grade: 3, key: "3", border: "border-green-300", hover: "hover:bg-green-50" },
+  { label: "Too easy for me", emoji: "🚀", grade: 4, key: "4", border: "border-blue-300", hover: "hover:bg-blue-50" },
 ];
 
 function Spinner() {
@@ -307,12 +309,22 @@ export function FlashcardsReviewTab({
             >
               Go to exams
             </Link>
-            <Link
-              href={`/${tenantSlug}/flashcards`}
-              className="inline-flex h-10 items-center px-5 rounded-lg text-sm font-medium border border-border bg-surface-card hover:bg-surface-base"
-            >
-              My Decks
-            </Link>
+            {onNavigateToDecks ? (
+              <button
+                type="button"
+                onClick={onNavigateToDecks}
+                className="inline-flex h-10 items-center px-5 rounded-lg text-sm font-medium border border-border bg-surface-card hover:bg-surface-base transition-colors"
+              >
+                My Decks
+              </button>
+            ) : (
+              <Link
+                href={`/${tenantSlug}/flashcards`}
+                className="inline-flex h-10 items-center px-5 rounded-lg text-sm font-medium border border-border bg-surface-card hover:bg-surface-base"
+              >
+                My Decks
+              </Link>
+            )}
           </div>
         </div>
       )}
@@ -463,7 +475,8 @@ export function FlashcardsReviewTab({
                   className="relative min-h-[200px] [transform-style:preserve-3d] motion-reduce:transition-none"
                   style={{
                     transform: flipped ? "rotateY(180deg)" : "rotateY(0deg)",
-                    transition: "transform 450ms cubic-bezier(0.4, 0, 0.2, 1)",
+                    transition: "transform 350ms cubic-bezier(0.34, 1.56, 0.64, 1)",
+                    perspective: "1000px",
                   }}
                 >
                   <div
@@ -471,10 +484,10 @@ export function FlashcardsReviewTab({
                     style={{ minHeight: "inherit" }}
                     aria-hidden={flipped}
                   >
-                    <div className="text-body text-lg font-semibold text-center leading-relaxed">
+                    <div className="text-body text-xl font-semibold text-center leading-relaxed">
                       <MarkdownCardContent content={currentCard.front} format="markdown" />
                     </div>
-                    <p className="text-xs text-muted mt-4 text-center">
+                    <p className="text-xs text-muted mt-4 text-center anim-hint">
                       Tap to reveal answer
                     </p>
                   </div>
@@ -498,18 +511,21 @@ export function FlashcardsReviewTab({
 
           {flipped && (
             <div className="flex flex-wrap gap-3 justify-center">
-              {GRADE_BUTTONS.map(({ label, grade, key, className }) => (
+              {GRADE_BUTTONS.map(({ label, emoji, grade, key, border, hover }) => (
                 <button
                   key={grade}
                   type="button"
                   disabled={grading || !!exitingCard}
                   onClick={() => gradeCard(currentCard, grade)}
-                  className={`min-h-[44px] px-4 py-2.5 rounded-lg text-sm font-semibold border flex flex-col items-center transition-transform hover:scale-[1.03] active:scale-[0.97] disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 ${className}`}
+                  className={`min-h-[44px] px-4 py-2.5 rounded-xl text-sm font-medium border-2 bg-white flex items-center gap-2 transition-all duration-150 hover:scale-105 active:scale-95 disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 shadow-sm ${border} ${hover}`}
                   aria-label={`${label} (${key})`}
                 >
-                  <span>{label}</span>
+                  <span aria-hidden>{emoji}</span>
+                  <span className="text-body">
+                    <span className="font-semibold">{key}</span> - {label}
+                  </span>
                   {intervalPreview?.[grade as 1 | 2 | 3 | 4] != null && (
-                    <span className="text-xs opacity-80 mt-0.5">
+                    <span className="text-xs text-secondary font-mono ml-1">
                       {formatInterval(intervalPreview[grade as 1 | 2 | 3 | 4])}
                     </span>
                   )}
