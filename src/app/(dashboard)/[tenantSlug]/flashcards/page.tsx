@@ -65,20 +65,47 @@ export default function FlashcardsPage() {
 
   return (
     <div className="px-4 sm:px-6 md:px-8 py-6 sm:py-8">
-      <div className="flex flex-wrap gap-1 border-b border-border mb-6">
-        {TABS.map((tab) => (
+      <div
+        className="flex flex-wrap gap-1 border-b border-border mb-6"
+        role="tablist"
+        aria-label="Flashcard sections"
+      >
+        {TABS.map((tab, idx) => (
           <button
             key={tab.id}
             id={`tab-${tab.id}`}
             type="button"
+            role="tab"
+            tabIndex={activeTab === tab.id ? 0 : -1}
+            aria-selected={activeTab === tab.id}
+            aria-controls={`panel-${tab.id}`}
             onClick={() => setActiveTab(tab.id)}
+            onKeyDown={(e) => {
+              if (e.key === "ArrowRight") {
+                e.preventDefault();
+                const next = TABS[(idx + 1) % TABS.length];
+                setActiveTab(next.id);
+                document.getElementById(`tab-${next.id}`)?.focus();
+              } else if (e.key === "ArrowLeft") {
+                e.preventDefault();
+                const prev = TABS[(idx - 1 + TABS.length) % TABS.length];
+                setActiveTab(prev.id);
+                document.getElementById(`tab-${prev.id}`)?.focus();
+              } else if (e.key === "Home") {
+                e.preventDefault();
+                setActiveTab(TABS[0].id);
+                document.getElementById(`tab-${TABS[0].id}`)?.focus();
+              } else if (e.key === "End") {
+                e.preventDefault();
+                setActiveTab(TABS[TABS.length - 1].id);
+                document.getElementById(`tab-${TABS[TABS.length - 1].id}`)?.focus();
+              }
+            }}
             className={`px-4 py-2.5 text-sm font-medium rounded-t-lg transition-colors ${
               activeTab === tab.id
                 ? "bg-surface-card border border-border border-b-0 -mb-px text-body"
                 : "text-secondary hover:text-body hover:bg-surface-base"
             }`}
-            aria-selected={activeTab === tab.id}
-            role="tab"
           >
             {tab.label}
           </button>
@@ -86,7 +113,7 @@ export default function FlashcardsPage() {
       </div>
 
       {activeTab === "review" && (
-        <div role="tabpanel" aria-labelledby="tab-review">
+        <div id="panel-review" role="tabpanel" aria-labelledby="tab-review">
           <FlashcardsReviewTab
             tenantSlug={tenantSlug}
             onNavigateToDecks={() => setActiveTab("decks")}
@@ -95,12 +122,12 @@ export default function FlashcardsPage() {
         </div>
       )}
       {activeTab === "decks" && (
-        <div role="tabpanel" aria-labelledby="tab-decks">
+        <div id="panel-decks" role="tabpanel" aria-labelledby="tab-decks">
           <FlashcardsMyDecksTab tenantSlug={tenantSlug} />
         </div>
       )}
       {activeTab === "library" && (
-        <div role="tabpanel" aria-labelledby="tab-library">
+        <div id="panel-library" role="tabpanel" aria-labelledby="tab-library">
           <FlashcardsLibraryTab
             tenantSlug={tenantSlug}
             onNavigateToDecks={() => setActiveTab("decks")}
@@ -108,7 +135,7 @@ export default function FlashcardsPage() {
         </div>
       )}
       {activeTab === "analytics" && (
-        <div role="tabpanel" aria-labelledby="tab-analytics">
+        <div id="panel-analytics" role="tabpanel" aria-labelledby="tab-analytics">
           <FlashcardsAnalyticsTab
             tenantSlug={tenantSlug}
             onNavigateToReview={() => setActiveTab("review")}
@@ -116,7 +143,7 @@ export default function FlashcardsPage() {
         </div>
       )}
       {activeTab === "settings" && (
-        <div role="tabpanel" aria-labelledby="tab-settings">
+        <div id="panel-settings" role="tabpanel" aria-labelledby="tab-settings">
           <FlashcardsSettingsTab tenantSlug={tenantSlug} />
         </div>
       )}
