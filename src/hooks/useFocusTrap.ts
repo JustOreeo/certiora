@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, type RefObject } from "react";
+import { useEffect, useRef, useCallback, type RefObject } from "react";
 
 const FOCUSABLE =
   "button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex=\"-1\"])";
@@ -23,6 +23,10 @@ export function useFocusTrap<T extends HTMLElement = HTMLDivElement>(
   const innerRef = useRef<T>(null as unknown as T);
   const containerRef = (options?.containerRef ?? innerRef) as RefObject<T>;
   const previousActiveRef = useRef<HTMLElement | null>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  const stableOnClose = useCallback(() => onCloseRef.current(), []);
 
   useEffect(() => {
     if (!open) return;
@@ -43,7 +47,7 @@ export function useFocusTrap<T extends HTMLElement = HTMLDivElement>(
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.preventDefault();
-        onClose();
+        stableOnClose();
         return;
       }
       if (e.key !== "Tab") return;
@@ -71,7 +75,7 @@ export function useFocusTrap<T extends HTMLElement = HTMLDivElement>(
       document.removeEventListener("keydown", handleKeyDown);
       previousActiveRef.current?.focus?.();
     };
-  }, [open, onClose]);
+  }, [open, stableOnClose]);
 
   return containerRef;
 }
