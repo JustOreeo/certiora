@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
+import { Spinner } from "@/components/ui/Spinner";
 
 const RETENTION_OPTIONS = [
   { value: 0.7, label: "70%", sublabel: "Lightest" },
@@ -45,15 +46,6 @@ export type FsrsSettings = {
   }>;
   optimizeJobQueuedOrActive?: boolean;
 };
-
-function Spinner() {
-  return (
-    <svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none">
-      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeOpacity="0.25" />
-      <path d="M4 12a8 8 0 018-8" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
-    </svg>
-  );
-}
 
 export function FlashcardsSettingsTab({ tenantSlug }: { tenantSlug: string }) {
   const [settings, setSettings] = useState<FsrsSettings | null>(null);
@@ -329,9 +321,9 @@ export function FlashcardsSettingsTab({ tenantSlug }: { tenantSlug: string }) {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border bg-surface-base/50">
-                  <th className="text-left py-3 px-4 font-medium text-body">Deck</th>
-                  <th className="text-right py-3 px-4 font-medium text-body">Custom target</th>
-                  <th className="text-right py-3 px-4 font-medium text-body">vs. account default</th>
+                  <th scope="col" className="text-left py-3 px-4 font-medium text-body">Deck</th>
+                  <th scope="col" className="text-right py-3 px-4 font-medium text-body">Custom target</th>
+                  <th scope="col" className="text-right py-3 px-4 font-medium text-body">vs. account default</th>
                 </tr>
               </thead>
               <tbody>

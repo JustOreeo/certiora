@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { toUserMessage } from "@/lib/errors";
+import { Spinner } from "@/components/ui/Spinner";
 import { SourceBadge } from "../../_components/SourceBadge";
 import { CardEditorModal } from "../../_components/CardEditorModal";
 import { DeckUpdateDiffModal } from "../../_components/DeckUpdateDiffModal";
@@ -62,14 +63,6 @@ type Deck = {
   dueToday: number;
 };
 
-function Spinner() {
-  return (
-    <svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none">
-      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeOpacity="0.25" />
-      <path d="M4 12a8 8 0 018-8" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
-    </svg>
-  );
-}
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 function DragHandle({ listeners, attributes }: { listeners?: any; attributes?: any }) {
@@ -829,7 +822,7 @@ export default function DeckDetailPage() {
                   type="button"
                   disabled={cardPage <= 1}
                   onClick={() => loadCards(cardPage - 1, debouncedCardSearch)}
-                  className="inline-flex h-8 items-center px-3 rounded-lg text-xs font-medium border border-border bg-surface-card hover:bg-surface-base disabled:opacity-40"
+                  className="inline-flex h-10 items-center px-4 rounded-lg text-xs font-medium border border-border bg-surface-card hover:bg-surface-base disabled:opacity-40 cursor-pointer"
                 >
                   Previous
                 </button>
@@ -837,7 +830,7 @@ export default function DeckDetailPage() {
                   type="button"
                   disabled={cardPage * cardPageSize >= cardTotal}
                   onClick={() => loadCards(cardPage + 1, debouncedCardSearch)}
-                  className="inline-flex h-8 items-center px-3 rounded-lg text-xs font-medium border border-border bg-surface-card hover:bg-surface-base disabled:opacity-40"
+                  className="inline-flex h-10 items-center px-4 rounded-lg text-xs font-medium border border-border bg-surface-card hover:bg-surface-base disabled:opacity-40 cursor-pointer"
                 >
                   Next
                 </button>

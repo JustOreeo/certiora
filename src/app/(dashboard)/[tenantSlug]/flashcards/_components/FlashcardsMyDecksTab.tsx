@@ -6,6 +6,7 @@ import { toUserMessage } from "@/lib/errors";
 import { SourceBadge } from "./SourceBadge";
 import { CreateDeckModal } from "./CreateDeckModal";
 import { ImportDeckDialog } from "./ImportDeckDialog";
+import { Spinner } from "@/components/ui/Spinner";
 
 function LockIcon({ className }: { className?: string }) {
   return (
@@ -43,14 +44,6 @@ export type DeckListItem = {
   dueToday: number;
 };
 
-function Spinner() {
-  return (
-    <svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none">
-      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeOpacity="0.25" />
-      <path d="M4 12a8 8 0 018-8" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
-    </svg>
-  );
-}
 
 export function FlashcardsMyDecksTab({ tenantSlug }: { tenantSlug: string }) {
   const [decks, setDecks] = useState<DeckListItem[]>([]);
@@ -168,7 +161,7 @@ export function FlashcardsMyDecksTab({ tenantSlug }: { tenantSlug: string }) {
           {decks.map((deck, i) => (
             <li
               key={deck.id}
-              className={`bg-surface-card border rounded-xl p-4 shadow-sm flex flex-wrap items-center gap-3 transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 anim-stagger ${
+              className={`bg-surface-card border rounded-xl p-4 shadow-sm flex flex-wrap items-center gap-3 transition-all duration-200 hover:shadow-lg hover:border-primary/30 cursor-pointer anim-stagger ${
                 deck.dueToday > 0 ? "border-l-4 border-l-primary border-border" : "border-border"
               }`}
               style={{ animationDelay: `${Math.min(i, 9) * 40}ms` }}
@@ -275,7 +268,7 @@ export function FlashcardsMyDecksTab({ tenantSlug }: { tenantSlug: string }) {
               type="button"
               disabled={page <= 1}
               onClick={() => loadDecks(page - 1)}
-              className="inline-flex h-8 items-center px-3 rounded-lg text-xs font-medium border border-border bg-surface-card hover:bg-surface-base disabled:opacity-40"
+              className="inline-flex h-10 items-center px-4 rounded-lg text-xs font-medium border border-border bg-surface-card hover:bg-surface-base disabled:opacity-40 cursor-pointer"
             >
               Previous
             </button>
@@ -283,7 +276,7 @@ export function FlashcardsMyDecksTab({ tenantSlug }: { tenantSlug: string }) {
               type="button"
               disabled={page * pageSize >= total}
               onClick={() => loadDecks(page + 1)}
-              className="inline-flex h-8 items-center px-3 rounded-lg text-xs font-medium border border-border bg-surface-card hover:bg-surface-base disabled:opacity-40"
+              className="inline-flex h-10 items-center px-4 rounded-lg text-xs font-medium border border-border bg-surface-card hover:bg-surface-base disabled:opacity-40 cursor-pointer"
             >
               Next
             </button>

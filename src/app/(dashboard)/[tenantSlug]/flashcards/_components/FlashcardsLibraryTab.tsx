@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { SourceBadge } from "./SourceBadge";
 import { ImportFromLibraryDialog } from "./ImportFromLibraryDialog";
+import { Spinner } from "@/components/ui/Spinner";
+import { DownloadIcon, CheckCircleIcon, ArrowRightIcon } from "@/components/ui/Icons";
 
 export type LibraryDeckItem = {
   id: string;
@@ -38,14 +40,6 @@ function useDebounce<T>(value: T, delay: number): T {
   return debouncedValue;
 }
 
-function Spinner() {
-  return (
-    <svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none">
-      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeOpacity="0.25" />
-      <path d="M4 12a8 8 0 018-8" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
-    </svg>
-  );
-}
 
 export function FlashcardsLibraryTab({
   tenantSlug,
@@ -134,7 +128,7 @@ export function FlashcardsLibraryTab({
             key={f.value || "all"}
             type="button"
             onClick={() => setSourceFilter(f.value)}
-            className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+            className={`px-3 py-2 rounded-full text-sm font-medium transition-colors cursor-pointer ${
               sourceFilter === f.value
                 ? "bg-primary text-inverse"
                 : "border border-border bg-surface-card text-body hover:bg-surface-base"
@@ -192,7 +186,7 @@ export function FlashcardsLibraryTab({
               className={`flex flex-col rounded-2xl p-5 border transition-all duration-150 ${
                 deck.isOwn
                   ? "bg-surface-card border-2 border-primary shadow-sm"
-                  : "bg-surface-card border border-border hover:shadow-md hover:-translate-y-0.5"
+                  : "bg-surface-card border border-border hover:shadow-lg hover:border-primary/30"
               }`}
             >
               <div className="flex-1 min-w-0 flex flex-col gap-3">
@@ -211,7 +205,7 @@ export function FlashcardsLibraryTab({
                   <p>
                     {deck.cardCount} cards · {deck.creatorName}
                   </p>
-                  <p className="text-muted">↓ {deck.importCount} imports</p>
+                  <p className="text-muted flex items-center gap-1"><DownloadIcon className="w-3.5 h-3.5 inline" /> {deck.importCount} imports</p>
                 </div>
               </div>
               <div className="mt-4 pt-3 border-t border-border">
@@ -220,11 +214,11 @@ export function FlashcardsLibraryTab({
                     href={`/${tenantSlug}/flashcards/decks/${deck.id}`}
                     className="inline-flex w-full justify-center items-center gap-1 h-10 px-4 rounded-lg text-sm font-medium border border-primary text-primary bg-primary-subtle hover:bg-primary/10 transition-colors"
                   >
-                    Edit →
+                    Edit <ArrowRightIcon className="w-4 h-4 inline" />
                   </Link>
                 ) : deck.alreadyImported ? (
                   <p className="flex items-center justify-center gap-1 text-sm font-medium text-success py-2">
-                    <span aria-hidden>✓</span> Imported
+                    <CheckCircleIcon className="w-4 h-4 text-success" /> Imported
                   </p>
                 ) : (
                   <button
@@ -251,7 +245,7 @@ export function FlashcardsLibraryTab({
               type="button"
               disabled={page <= 1}
               onClick={() => loadLibrary(page - 1)}
-              className="inline-flex h-8 items-center px-3 rounded-lg text-xs font-medium border border-border bg-surface-card hover:bg-surface-base disabled:opacity-40"
+              className="inline-flex h-10 items-center px-4 rounded-lg text-xs font-medium border border-border bg-surface-card hover:bg-surface-base disabled:opacity-40 cursor-pointer"
             >
               Previous
             </button>
@@ -259,7 +253,7 @@ export function FlashcardsLibraryTab({
               type="button"
               disabled={page * pageSize >= total}
               onClick={() => loadLibrary(page + 1)}
-              className="inline-flex h-8 items-center px-3 rounded-lg text-xs font-medium border border-border bg-surface-card hover:bg-surface-base disabled:opacity-40"
+              className="inline-flex h-10 items-center px-4 rounded-lg text-xs font-medium border border-border bg-surface-card hover:bg-surface-base disabled:opacity-40 cursor-pointer"
             >
               Next
             </button>
