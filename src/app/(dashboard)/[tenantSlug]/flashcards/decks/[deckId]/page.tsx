@@ -456,7 +456,7 @@ export default function DeckDetailPage() {
 
   if (!deck) {
     return (
-      <div className="px-4 sm:px-6 md:px-8 py-6 max-w-4xl mx-auto">
+      <div className="px-4 sm:px-6 md:px-8 py-6">
         <p className="text-secondary">{loadError ?? "Deck not found."}</p>
         <Link href={`/${tenantSlug}/flashcards`} className="text-primary hover:underline mt-2 inline-block">
           Back to Flashcards
@@ -471,7 +471,7 @@ export default function DeckDetailPage() {
     (deck.importedAtVersion ?? 0) < deck.sourceDeck.version;
 
   return (
-    <div className="px-4 sm:px-6 md:px-8 py-6 max-w-4xl mx-auto relative">
+    <div className="px-4 sm:px-6 md:px-8 py-6 relative">
       {deckToast && (
         <div
           className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-lg bg-primary text-inverse text-sm font-medium shadow-lg"
