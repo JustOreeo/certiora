@@ -28,7 +28,7 @@ describe("FSRS scheduler", () => {
       expect(output.stability).toBeGreaterThan(0);
       expect(output.nextIntervalDays).toBeGreaterThanOrEqual(1);
       expect(output.reps).toBe(1);
-      expect(output.lapses).toBe(1);
+      expect(output.lapses).toBe(0);
     });
 
     it("grade 3 (Good) → REVIEW, interval from stability and retention", () => {
@@ -42,8 +42,8 @@ describe("FSRS scheduler", () => {
     });
 
     it("grade 4 (Easy) → REVIEW, longer interval than Good", () => {
-      const { outGood } = schedule(newCard, 3, 0, r, w, now);
-      const { outEasy } = schedule(newCard, 4, 0, r, w, now);
+      const { output: outGood } = schedule(newCard, 3, 0, r, w, now);
+      const { output: outEasy } = schedule(newCard, 4, 0, r, w, now);
       expect(outEasy.state).toBe("REVIEW");
       expect(outEasy.nextIntervalDays).toBeGreaterThan(outGood.nextIntervalDays);
     });
@@ -92,7 +92,7 @@ describe("FSRS scheduler", () => {
       };
       const { output: out90 } = schedule(state, 3, 5, 0.9, w, now);
       const { output: out95 } = schedule(state, 3, 5, 0.95, w, now);
-      expect(out95.nextIntervalDays).toBeGreaterThan(out90.nextIntervalDays);
+      expect(out95.nextIntervalDays).toBeLessThan(out90.nextIntervalDays);
     });
   });
 
