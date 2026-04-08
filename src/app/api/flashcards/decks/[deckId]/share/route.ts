@@ -19,6 +19,9 @@ export async function POST(_request: NextRequest, { params }: Params) {
   if (!result) {
     return NextResponse.json({ error: "Deck not found" }, { status: 404 });
   }
+  if ("error" in result) {
+    return NextResponse.json({ error: result.error }, { status: 400 });
+  }
   return NextResponse.json(result);
 }
 

@@ -642,7 +642,7 @@ export default function DeckDetailPage() {
           )}
         </div>
 
-        {deck.source !== "ADMIN_SEEDED" && (
+        {deck.source !== "ADMIN_SEEDED" && !deck.sourceDeckId && (
           <div className="mb-4">
             <div className="flex items-center gap-2">
               <button
@@ -673,50 +673,52 @@ export default function DeckDetailPage() {
           </div>
         )}
 
-        <div id="share" className="bg-surface-base border border-border rounded-lg p-4 mb-6">
-          <h3 className="text-sm font-medium text-body mb-2">Share this deck</h3>
-          {deck.shareCode ? (
-            <div>
-              <p className="text-sm text-secondary mb-2">
-                Anyone in this organization can use this code to import a copy of your deck. Your
-                progress is not shared — only the card content.
-              </p>
-              <div className="flex flex-wrap items-center gap-2">
-                <code className="px-3 py-2 rounded bg-surface-card border border-border font-mono text-body">
-                  {deck.shareCode}
-                </code>
+        {!deck.sourceDeckId && (
+          <div id="share" className="bg-surface-base border border-border rounded-lg p-4 mb-6">
+            <h3 className="text-sm font-medium text-body mb-2">Share this deck</h3>
+            {deck.shareCode ? (
+              <div>
+                <p className="text-sm text-secondary mb-2">
+                  Anyone in this organization can use this code to import a copy of your deck. Your
+                  progress is not shared — only the card content.
+                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <code className="px-3 py-2 rounded bg-surface-card border border-border font-mono text-body">
+                    {deck.shareCode}
+                  </code>
+                  <button
+                    type="button"
+                    onClick={handleCopyCode}
+                    className="h-9 px-3 rounded-lg text-sm font-medium border border-border bg-surface-card hover:bg-surface-base"
+                  >
+                    {copyFeedback ? "Copied!" : "Copy"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleRevokeShare}
+                    className="h-9 px-3 rounded-lg text-sm font-medium text-error border border-error/30 hover:bg-error/10"
+                  >
+                    Revoke
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div>
+                <p className="text-sm text-secondary mb-2">
+                  Share this deck with other students. Generate a share code to let them import it.
+                </p>
                 <button
                   type="button"
-                  onClick={handleCopyCode}
-                  className="h-9 px-3 rounded-lg text-sm font-medium border border-border bg-surface-card hover:bg-surface-base"
+                  disabled={shareLoading}
+                  onClick={handleGenerateShare}
+                  className="h-9 px-3 rounded-lg text-sm font-medium border border-border bg-surface-card hover:bg-surface-base disabled:opacity-50"
                 >
-                  {copyFeedback ? "Copied!" : "Copy"}
-                </button>
-                <button
-                  type="button"
-                  onClick={handleRevokeShare}
-                  className="h-9 px-3 rounded-lg text-sm font-medium text-error border border-error/30 hover:bg-error/10"
-                >
-                  Revoke
+                  {shareLoading ? "Generating…" : "Generate share code"}
                 </button>
               </div>
-            </div>
-          ) : (
-            <div>
-              <p className="text-sm text-secondary mb-2">
-                Share this deck with other students. Generate a share code to let them import it.
-              </p>
-              <button
-                type="button"
-                disabled={shareLoading}
-                onClick={handleGenerateShare}
-                className="h-9 px-3 rounded-lg text-sm font-medium border border-border bg-surface-card hover:bg-surface-base disabled:opacity-50"
-              >
-                {shareLoading ? "Generating…" : "Generate share code"}
-              </button>
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        )}
 
         {/* Sticky cards toolbar */}
         <div className="sticky top-0 z-20 bg-surface-base/95 backdrop-blur-sm -mx-4 sm:-mx-6 md:-mx-8 px-4 sm:px-6 md:px-8 py-3 border-b border-border mb-4">

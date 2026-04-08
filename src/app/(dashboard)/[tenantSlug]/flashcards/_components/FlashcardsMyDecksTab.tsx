@@ -189,19 +189,21 @@ export function FlashcardsMyDecksTab({ tenantSlug }: { tenantSlug: string }) {
                     {deck.name}
                   </Link>
                   <SourceBadge source={deck.source} />
-                  <span className="text-xs text-secondary inline-flex items-center gap-1">
-                    {deck.isPublic ? (
-                      <>
-                        <GlobeIcon className="w-3.5 h-3.5" aria-hidden />
-                        Public
-                      </>
-                    ) : (
-                      <>
-                        <LockIcon className="w-3.5 h-3.5" aria-hidden />
-                        Private
-                      </>
-                    )}
-                  </span>
+                  {!deck.sourceDeckId && (
+                    <span className="text-xs text-secondary inline-flex items-center gap-1">
+                      {deck.isPublic ? (
+                        <>
+                          <GlobeIcon className="w-3.5 h-3.5" aria-hidden />
+                          Public
+                        </>
+                      ) : (
+                        <>
+                          <LockIcon className="w-3.5 h-3.5" aria-hidden />
+                          Private
+                        </>
+                      )}
+                    </span>
+                  )}
                   {deck.hasUpdate && (
                     <button
                       type="button"

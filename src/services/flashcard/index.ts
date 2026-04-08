@@ -237,9 +237,12 @@ export const flashcardService = {
   async updateDeck(tenantId: string, userId: string, deckId: string, input: UpdateDeckInput) {
     const deck = await assertDeckOwnership(tenantId, userId, deckId);
     if (!deck) return null;
-    // ADMIN_SEEDED: ignore isPublic (per PRD §12)
+    // Imported decks stay private (original is already in library).
+    // ADMIN_SEEDED: ignore isPublic (per PRD §12).
     const isPublic =
-      deck.source === "ADMIN_SEEDED" ? deck.isPublic : (input.isPublic ?? deck.isPublic);
+      deck.sourceDeckId || deck.source === "ADMIN_SEEDED"
+        ? deck.isPublic
+        : (input.isPublic ?? deck.isPublic);
     const data: Parameters<typeof prisma.flashcardDeck.update>[0]["data"] = {
       ...(input.name !== undefined && { name: input.name.trim().slice(0, 100) }),
       ...(input.description !== undefined && {
@@ -409,6 +412,7 @@ export const flashcardService = {
   async generateShareCode(tenantId: string, userId: string, deckId: string) {
     const deck = await assertDeckOwnership(tenantId, userId, deckId);
     if (!deck) return null;
+    if (deck.sourceDeckId) return { error: "Imported decks cannot be shared." };
     let code = generateShareCode();
     let attempts = 0;
     while (attempts < 20) {
