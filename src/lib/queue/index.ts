@@ -108,9 +108,20 @@ export async function addFsrsOptimizeJob(payload: FsrsOptimizeJobPayload): Promi
 /** Check if an fsrs-optimize job is queued or active for this user. */
 export async function isFsrsOptimizeJobQueuedOrActive(userId: string): Promise<boolean> {
   if (!fsrsOptimizeQueue) return false;
-  const waiting = await fsrsOptimizeQueue.getJobs(["waiting"]);
-  const active = await fsrsOptimizeQueue.getJobs(["active"]);
-  return [...waiting, ...active].some((job) => job.data?.userId === userId);
+  try {
+    const timeout = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error("Redis timeout")), 3000)
+    );
+    const check = async () => {
+      const waiting = await fsrsOptimizeQueue!.getJobs(["waiting"]);
+      const active = await fsrsOptimizeQueue!.getJobs(["active"]);
+      return [...waiting, ...active].some((job) => job.data?.userId === userId);
+    };
+    return await Promise.race([check(), timeout]);
+  } catch {
+    // Redis unavailable or timed out — treat as no job queued
+    return false;
+  }
 }
 
 // ——— Email queue ———
