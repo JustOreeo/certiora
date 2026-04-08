@@ -18,16 +18,21 @@ export async function GET(request: NextRequest, { params }: Params) {
     pageSize: sp.get("pageSize") ?? undefined,
     search: sp.get("search") ?? undefined,
   });
-  const result = await flashcardService.listCardsInDeck(
-    session.tenantId,
-    session.user.id,
-    deckId,
-    query
-  );
-  if (!result) {
-    return NextResponse.json({ error: "Deck not found" }, { status: 404 });
+  try {
+    const result = await flashcardService.listCardsInDeck(
+      session.tenantId,
+      session.user.id,
+      deckId,
+      query
+    );
+    if (!result) {
+      return NextResponse.json({ error: "Deck not found" }, { status: 404 });
+    }
+    return NextResponse.json(result);
+  } catch (error) {
+    console.error("GET cards error:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
-  return NextResponse.json(result);
 }
 
 export async function POST(request: NextRequest, { params }: Params) {

@@ -12,11 +12,16 @@ export async function GET(_request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const { deckId } = await params;
-  const deck = await flashcardService.getDeck(session.tenantId, session.user.id, deckId);
-  if (!deck) {
-    return NextResponse.json({ error: "Deck not found" }, { status: 404 });
+  try {
+    const deck = await flashcardService.getDeck(session.tenantId, session.user.id, deckId);
+    if (!deck) {
+      return NextResponse.json({ error: "Deck not found" }, { status: 404 });
+    }
+    return NextResponse.json(deck);
+  } catch (error) {
+    console.error("GET deck error:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
-  return NextResponse.json(deck);
 }
 
 export async function PATCH(request: NextRequest, { params }: Params) {
