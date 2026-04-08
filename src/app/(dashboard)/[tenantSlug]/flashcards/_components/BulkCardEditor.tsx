@@ -140,6 +140,19 @@ export function BulkCardEditor({
             <textarea
               value={pasteText}
               onChange={(e) => setPasteText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Tab") {
+                  e.preventDefault();
+                  const ta = e.currentTarget;
+                  const start = ta.selectionStart;
+                  const end = ta.selectionEnd;
+                  const val = ta.value;
+                  setPasteText(val.slice(0, start) + "\t" + val.slice(end));
+                  requestAnimationFrame(() => {
+                    ta.selectionStart = ta.selectionEnd = start + 1;
+                  });
+                }
+              }}
               placeholder={"What is photosynthesis?\tThe process by which plants convert sunlight to energy\nMitochondria function\tPowerhouse of the cell"}
               rows={8}
               className="w-full px-3 py-2 rounded-lg border border-border bg-surface-base text-body text-sm font-mono resize-y"
