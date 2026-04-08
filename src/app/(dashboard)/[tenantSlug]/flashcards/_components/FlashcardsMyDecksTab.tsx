@@ -229,10 +229,12 @@ export function FlashcardsMyDecksTab({ tenantSlug }: { tenantSlug: string }) {
                   ) : (
                     <span className="text-muted">No cards due</span>
                   )}
-                  {deck.shareCode ? (
-                    <span className="font-mono">{deck.shareCode}</span>
-                  ) : (
-                    <span>No share code</span>
+                  {!deck.sourceDeckId && (
+                    deck.shareCode ? (
+                      <span className="font-mono">{deck.shareCode}</span>
+                    ) : (
+                      <span>No share code</span>
+                    )
                   )}
                 </div>
               </div>
