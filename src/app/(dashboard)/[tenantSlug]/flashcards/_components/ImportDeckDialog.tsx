@@ -176,7 +176,7 @@ export function ImportDeckDialog({ open, onClose, onDone }: Props) {
               <p className="text-sm text-secondary">
                 {preview.cardCount} cards · by {preview.creatorName}
               </p>
-              {preview.sampleFronts.length > 0 && (
+              {preview.sampleFronts?.length > 0 && (
                 <div className="mt-2">
                   <p className="text-xs font-medium text-secondary mb-1">Sample cards:</p>
                   <ul className="text-sm text-body list-disc list-inside space-y-0.5">

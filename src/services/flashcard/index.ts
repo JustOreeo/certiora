@@ -425,7 +425,7 @@ export const flashcardService = {
       },
       include: {
         user: { select: { name: true } },
-        cards: { orderBy: { order: "asc", createdAt: "asc" }, take: 3, select: { front: true } },
+        cards: { orderBy: [{ order: "asc" }, { createdAt: "asc" }], take: 3, select: { front: true } },
         _count: { select: { cards: true } },
       },
     });
@@ -531,7 +531,7 @@ export const flashcardService = {
       include: {
         user: { select: { name: true } },
         tenant: { select: { name: true } },
-        cards: { orderBy: { order: "asc", createdAt: "asc" }, take: 3, select: { front: true } },
+        cards: { orderBy: [{ order: "asc" }, { createdAt: "asc" }], take: 3, select: { front: true } },
         _count: { select: { cards: true } },
       },
     });
@@ -556,7 +556,7 @@ export const flashcardService = {
   async importByDeckId(tenantId: string, userId: string, deckId: string) {
     const sourceDeck = await prisma.flashcardDeck.findFirst({
       where: { id: deckId, ...tenantScope(tenantId), isPublic: true },
-      include: { cards: { orderBy: { order: "asc", createdAt: "asc" } } },
+      include: { cards: { orderBy: [{ order: "asc" }, { createdAt: "asc" }] } },
     });
     if (!sourceDeck) return { error: "invalid" as const };
     if (sourceDeck.userId === userId) return { error: "own" as const };
@@ -617,7 +617,7 @@ export const flashcardService = {
     if (!shareCode) return { error: "invalid" as const };
     const sourceDeck = await prisma.flashcardDeck.findFirst({
       where: { shareCode, ...tenantScope(tenantId) },
-      include: { cards: { orderBy: { order: "asc", createdAt: "asc" } } },
+      include: { cards: { orderBy: [{ order: "asc" }, { createdAt: "asc" }] } },
     });
     if (!sourceDeck) return { error: "invalid" as const };
     if (sourceDeck.userId === userId) return { error: "own" as const };
@@ -691,7 +691,7 @@ export const flashcardService = {
 
     const sourceDeck = await prisma.flashcardDeck.findFirst({
       where: { id: deck.sourceDeckId, ...tenantScope(tenantId) },
-      include: { cards: { orderBy: { order: "asc", createdAt: "asc" } } },
+      include: { cards: { orderBy: [{ order: "asc" }, { createdAt: "asc" }] } },
     });
     if (!sourceDeck) return null;
 
@@ -741,7 +741,7 @@ export const flashcardService = {
 
     const sourceDeck = await prisma.flashcardDeck.findFirst({
       where: { id: deck.sourceDeckId, ...tenantScope(tenantId) },
-      include: { cards: { orderBy: { order: "asc", createdAt: "asc" } } },
+      include: { cards: { orderBy: [{ order: "asc" }, { createdAt: "asc" }] } },
     });
     if (!sourceDeck) return "not_found";
     if (sourceDeck.version <= (deck.importedAtVersion ?? 0)) return "no_update";
@@ -1358,7 +1358,7 @@ export const adminFlashcardService = {
     const deck = await prisma.flashcardDeck.findFirst({
       where: { id: deckId, ...adminDeckScope(tenantId) },
       include: {
-        cards: { orderBy: { order: "asc", createdAt: "asc" } },
+        cards: { orderBy: [{ order: "asc" }, { createdAt: "asc" }] },
         _count: { select: { cards: true } },
       },
     });
