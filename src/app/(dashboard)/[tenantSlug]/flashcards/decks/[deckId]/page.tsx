@@ -112,7 +112,7 @@ function SortableCard({
     <li
       ref={setNodeRef}
       style={style}
-      className="bg-surface-card border border-border rounded-xl p-4 shadow-sm"
+      className="bg-surface-card border border-border border-l-[3px] border-l-brand-200 rounded-xl p-4 shadow-sm transition-all duration-200 hover:shadow-md hover:border-l-primary"
     >
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="flex items-start gap-2 min-w-0 flex-1">
@@ -171,7 +171,9 @@ export default function DeckDetailPage() {
   const [cardPage, setCardPage] = useState(1);
   const [cardSearch, setCardSearch] = useState("");
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [cardsLoading, setCardsLoading] = useState(false);
+  const [cardsError, setCardsError] = useState<string | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingCard, setEditingCard] = useState<Card | null>(null);
   const [shareLoading, setShareLoading] = useState(false);
@@ -204,14 +206,22 @@ export default function DeckDetailPage() {
       const res = await fetch(`/api/flashcards/decks/${deckId}`);
       if (res.status === 404) {
         setDeck(null);
+        setLoadError(null);
         return;
       }
-      if (!res.ok) throw new Error("Failed to load deck");
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setLoadError(data.error || "Failed to load deck");
+        setDeck(null);
+        return;
+      }
       const data = await res.json();
       setDeck(data);
+      setLoadError(null);
     } catch (e) {
       console.error(e);
       setDeck(null);
+      setLoadError("Failed to load deck");
     } finally {
       setLoading(false);
     }
@@ -220,6 +230,7 @@ export default function DeckDetailPage() {
   const loadCards = useCallback(async (p = 1, search = "") => {
     if (!deckId) return;
     setCardsLoading(true);
+    setCardsError(null);
     try {
       const params = new URLSearchParams({
         page: String(p),
@@ -227,7 +238,10 @@ export default function DeckDetailPage() {
       });
       if (search) params.set("search", search);
       const res = await fetch(`/api/flashcards/decks/${deckId}/cards?${params}`);
-      if (!res.ok) throw new Error("Failed to load cards");
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to load cards");
+      }
       const data = await res.json();
       setCards(data.items ?? []);
       setCardTotal(data.total ?? 0);
@@ -235,6 +249,7 @@ export default function DeckDetailPage() {
     } catch (e) {
       console.error(e);
       setCards([]);
+      setCardsError(e instanceof Error ? e.message : "Failed to load cards");
     } finally {
       setCardsLoading(false);
     }
@@ -448,7 +463,7 @@ export default function DeckDetailPage() {
   if (!deck) {
     return (
       <div className="px-4 sm:px-6 md:px-8 py-6 max-w-4xl mx-auto">
-        <p className="text-secondary">Deck not found.</p>
+        <p className="text-secondary">{loadError ?? "Deck not found."}</p>
         <Link href={`/${tenantSlug}/flashcards`} className="text-primary hover:underline mt-2 inline-block">
           Back to Flashcards
         </Link>
@@ -572,9 +587,9 @@ export default function DeckDetailPage() {
           {deck.dueToday > 0 && (
             <Link
               href={`/${tenantSlug}/flashcards/study?deckId=${deck.id}`}
-              className="inline-flex h-10 items-center px-4 rounded-lg text-sm font-semibold bg-primary text-inverse hover:bg-primary-hover transition-colors"
+              className="inline-flex h-10 items-center gap-2 px-5 rounded-lg text-sm font-semibold bg-primary text-inverse hover:bg-primary-hover transition-colors anim-glow"
             >
-              Study ({deck.dueToday} due)
+              Study <span className="bg-white/20 rounded-full px-2 py-0.5 text-xs">{deck.dueToday} due</span>
             </Link>
           )}
           {deck.cardCount > 0 && (
@@ -761,7 +776,18 @@ export default function DeckDetailPage() {
         </div>
       )}
 
-      {!cardsLoading && cards.length === 0 && !debouncedCardSearch ? (
+      {!cardsLoading && cardsError ? (
+        <div className="bg-surface-card border border-border rounded-xl px-6 py-8 text-center shadow-sm">
+          <p className="text-sm text-error">{cardsError}</p>
+          <button
+            type="button"
+            onClick={() => loadCards(cardPage, debouncedCardSearch)}
+            className="inline-flex mt-3 h-9 items-center px-4 rounded-lg text-sm font-medium border border-border bg-surface-base hover:bg-surface-card"
+          >
+            Retry
+          </button>
+        </div>
+      ) : !cardsLoading && cards.length === 0 && !debouncedCardSearch ? (
         <div className="bg-surface-card border border-border rounded-xl px-6 py-12 text-center shadow-sm">
           <p className="text-sm text-secondary">No cards yet. Add your first card to start building this deck.</p>
           <button
