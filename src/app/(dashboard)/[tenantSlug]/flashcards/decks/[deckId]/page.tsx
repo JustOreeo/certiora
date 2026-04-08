@@ -182,7 +182,7 @@ export default function DeckDetailPage() {
   const [tagInput, setTagInput] = useState("");
   const [addingTag, setAddingTag] = useState(false);
   const [viewMode, setViewMode] = useState<"cards" | "table">("cards");
-  const cardPageSize = 20;
+  const [cardPageSize, setCardPageSize] = useState(20);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -221,14 +221,14 @@ export default function DeckDetailPage() {
     }
   }, [deckId]);
 
-  const loadCards = useCallback(async (p = 1, search = "") => {
+  const loadCards = useCallback(async (p = 1, search = "", pageSizeOverride?: number) => {
     if (!deckId) return;
     setCardsLoading(true);
     setCardsError(null);
     try {
       const params = new URLSearchParams({
         page: String(p),
-        pageSize: String(cardPageSize),
+        pageSize: String(pageSizeOverride ?? cardPageSize),
       });
       if (search) params.set("search", search);
       const res = await fetch(`/api/flashcards/decks/${deckId}/cards?${params}`);
@@ -247,7 +247,7 @@ export default function DeckDetailPage() {
     } finally {
       setCardsLoading(false);
     }
-  }, [deckId]);
+  }, [deckId, cardPageSize]);
 
   // Debounce search
   const [debouncedCardSearch, setDebouncedCardSearch] = useState("");
@@ -817,7 +817,7 @@ export default function DeckDetailPage() {
           <button
             type="button"
             onClick={() => loadCards(cardPage, debouncedCardSearch)}
-            className="inline-flex mt-3 h-9 items-center px-4 rounded-lg text-sm font-medium border border-border bg-surface-base hover:bg-surface-card"
+            className="inline-flex mt-3 h-9 items-center px-4 rounded-lg text-sm font-medium border border-border bg-surface-base hover:bg-surface-card cursor-pointer"
           >
             Retry
           </button>
@@ -828,7 +828,7 @@ export default function DeckDetailPage() {
           <button
             type="button"
             onClick={handleAddCard}
-            className="inline-flex mt-4 h-10 items-center px-5 rounded-lg text-sm font-semibold bg-primary text-inverse hover:bg-primary-hover"
+            className="inline-flex mt-4 h-10 items-center px-5 rounded-lg text-sm font-semibold bg-primary text-inverse hover:bg-primary-hover cursor-pointer"
           >
             Add card
           </button>
@@ -913,31 +913,82 @@ export default function DeckDetailPage() {
             </div>
           )}
 
-          {cardTotal > cardPageSize && (
-            <div className="flex items-center justify-between pt-4">
-              <span className="text-xs text-secondary">
-                Showing {(cardPage - 1) * cardPageSize + 1}–{Math.min(cardPage * cardPageSize, cardTotal)} of {cardTotal}
-              </span>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  disabled={cardPage <= 1}
-                  onClick={() => loadCards(cardPage - 1, debouncedCardSearch)}
-                  className="inline-flex h-10 items-center px-4 rounded-lg text-xs font-medium border border-border bg-surface-card hover:bg-surface-base disabled:opacity-40 cursor-pointer"
-                >
-                  Previous
-                </button>
-                <button
-                  type="button"
-                  disabled={cardPage * cardPageSize >= cardTotal}
-                  onClick={() => loadCards(cardPage + 1, debouncedCardSearch)}
-                  className="inline-flex h-10 items-center px-4 rounded-lg text-xs font-medium border border-border bg-surface-card hover:bg-surface-base disabled:opacity-40 cursor-pointer"
-                >
-                  Next
-                </button>
+          {/* Pagination */}
+          {cardTotal > cardPageSize && (() => {
+            const totalPages = Math.ceil(cardTotal / cardPageSize);
+            // Build page numbers: show up to 5 pages centered around current
+            const pages: (number | "…")[] = [];
+            if (totalPages <= 7) {
+              for (let i = 1; i <= totalPages; i++) pages.push(i);
+            } else {
+              pages.push(1);
+              if (cardPage > 3) pages.push("…");
+              const start = Math.max(2, cardPage - 1);
+              const end = Math.min(totalPages - 1, cardPage + 1);
+              for (let i = start; i <= end; i++) pages.push(i);
+              if (cardPage < totalPages - 2) pages.push("…");
+              pages.push(totalPages);
+            }
+            return (
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-4">
+                <div className="flex items-center gap-3">
+                  <span className="text-xs text-secondary">
+                    Showing {(cardPage - 1) * cardPageSize + 1}–{Math.min(cardPage * cardPageSize, cardTotal)} of {cardTotal}
+                  </span>
+                  <select
+                    value={cardPageSize}
+                    onChange={(e) => {
+                      const newSize = Number(e.target.value);
+                      setCardPageSize(newSize);
+                      loadCards(1, debouncedCardSearch, newSize);
+                    }}
+                    className="h-8 pl-2 pr-6 rounded-md border border-border bg-surface-base text-xs text-body cursor-pointer"
+                    aria-label="Cards per page"
+                  >
+                    <option value={20}>20 / page</option>
+                    <option value={50}>50 / page</option>
+                    <option value={100}>100 / page</option>
+                  </select>
+                </div>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    disabled={cardPage <= 1}
+                    onClick={() => loadCards(cardPage - 1, debouncedCardSearch)}
+                    className="inline-flex h-9 items-center px-3 rounded-lg text-xs font-medium border border-border bg-surface-card hover:bg-surface-base disabled:opacity-40 cursor-pointer"
+                  >
+                    Previous
+                  </button>
+                  {pages.map((p, idx) =>
+                    p === "…" ? (
+                      <span key={`ellipsis-${idx}`} className="px-1 text-xs text-secondary">…</span>
+                    ) : (
+                      <button
+                        key={p}
+                        type="button"
+                        onClick={() => loadCards(p, debouncedCardSearch)}
+                        className={`inline-flex h-9 w-9 items-center justify-center rounded-lg text-xs font-medium transition-colors cursor-pointer ${
+                          p === cardPage
+                            ? "bg-primary text-inverse"
+                            : "border border-border bg-surface-card hover:bg-surface-base text-body"
+                        }`}
+                      >
+                        {p}
+                      </button>
+                    )
+                  )}
+                  <button
+                    type="button"
+                    disabled={cardPage * cardPageSize >= cardTotal}
+                    onClick={() => loadCards(cardPage + 1, debouncedCardSearch)}
+                    className="inline-flex h-9 items-center px-3 rounded-lg text-xs font-medium border border-border bg-surface-card hover:bg-surface-base disabled:opacity-40 cursor-pointer"
+                  >
+                    Next
+                  </button>
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
         </>
       ) : null}
 
