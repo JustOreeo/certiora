@@ -44,7 +44,11 @@ export async function PATCH(request: NextRequest) {
     const settings = await flashcardService.updateSettings(
       session.tenantId,
       session.user.id,
-      { retentionTarget: parsed.data.retentionTarget }
+      {
+        retentionTarget: parsed.data.retentionTarget,
+        examDate: parsed.data.examDate,
+        retentionManualOverride: parsed.data.retentionManualOverride,
+      }
     );
     return NextResponse.json(settings);
   } catch (error) {

@@ -2,7 +2,8 @@ import { prisma, tenantScope } from "@/lib/db";
 import type { Prisma } from "@prisma/client";
 import { CardState } from "@prisma/client";
 import { randomBytes } from "crypto";
-import { rNow, defaultFsrsW } from "@/lib/fsrs";
+import { rNow, defaultFsrsW, computeReviewIntensity } from "@/lib/fsrs";
+import { computeCoverage } from "@/lib/fsrs/coverage";
 import type { FsrsStateInput } from "@/lib/fsrs";
 import { addFsrsOptimizeJob, addAdminDeckFanoutJob } from "@/lib/queue";
 
@@ -186,7 +187,28 @@ export const flashcardService = {
       },
     });
     if (!deck) return null;
-    const dueToday = await getDueCountForDeck(tenantId, userId, deckId);
+    const [dueToday, tenantParams, studentParams] = await Promise.all([
+      getDueCountForDeck(tenantId, userId, deckId),
+      prisma.fsrsParams.findFirst({ where: { tenantId, userId: null } }),
+      prisma.fsrsParams.findUnique({ where: { tenantId_userId: { tenantId, userId } } }),
+    ]);
+
+    // Compute effective account retention (phase-aware)
+    const storedTarget = studentParams?.retentionTarget ?? tenantParams?.retentionTarget ?? 0.9;
+    let accountRetentionTarget = storedTarget;
+    let examPhaseLabel: string | null = null;
+    if (studentParams?.examDate) {
+      const intensity = computeReviewIntensity({
+        examDate: studentParams.examDate,
+        coveragePercent: 0, // not needed for retention target
+        totalCards: 0,
+      });
+      if (intensity && !studentParams.retentionManualOverride) {
+        accountRetentionTarget = intensity.suggestedRetentionTarget;
+      }
+      examPhaseLabel = intensity?.phase.label ?? null;
+    }
+
     const { _count, sourceDeck, tags, ...rest } = deck;
     return {
       ...rest,
@@ -194,6 +216,8 @@ export const flashcardService = {
       dueToday,
       sourceDeck: sourceDeck ? { version: sourceDeck.version } : null,
       tags: tags.map((t) => ({ id: t.tag.id, name: t.tag.name })),
+      accountRetentionTarget,
+      examPhaseLabel,
     };
   },
 
@@ -1110,8 +1134,52 @@ export const flashcardService = {
         }),
         this.listDecksWithCustomRetention(tenantId, userId),
       ]);
-    const effectiveTarget =
+    const storedTarget =
       studentParams?.retentionTarget ?? tenantParams?.retentionTarget ?? 0.9;
+
+    // Compute review intensity if exam date is set
+    let reviewIntensity: {
+      phase: string;
+      phaseLabel: string;
+      phaseDescription: string;
+      daysRemaining: number;
+      suggestedRetentionTarget: number;
+      effectiveRetentionTarget: number;
+      isManualOverride: boolean;
+      coveragePercent: number;
+      coverageOverrideApplied: boolean;
+      effectiveNewCardLimit: number;
+    } | null = null;
+
+    let effectiveTarget = storedTarget;
+
+    if (studentParams?.examDate) {
+      const coverage = await computeCoverage(tenantId, userId);
+      const intensity = computeReviewIntensity({
+        examDate: studentParams.examDate,
+        coveragePercent: coverage.coveragePercent,
+        totalCards: coverage.totalCards,
+      });
+      if (intensity) {
+        const isManualOverride = studentParams.retentionManualOverride;
+        effectiveTarget = isManualOverride
+          ? storedTarget
+          : intensity.suggestedRetentionTarget;
+        reviewIntensity = {
+          phase: intensity.phase.phase,
+          phaseLabel: intensity.phase.label,
+          phaseDescription: intensity.phase.description,
+          daysRemaining: intensity.daysRemaining,
+          suggestedRetentionTarget: intensity.suggestedRetentionTarget,
+          effectiveRetentionTarget: effectiveTarget,
+          isManualOverride,
+          coveragePercent: intensity.coveragePercent,
+          coverageOverrideApplied: intensity.coverageOverrideApplied,
+          effectiveNewCardLimit: intensity.effectiveNewCardLimit,
+        };
+      }
+    }
+
     return {
       retentionTarget: effectiveTarget,
       isOptimized: studentParams?.isOptimized ?? false,
@@ -1123,18 +1191,24 @@ export const flashcardService = {
         retentionTarget: tenantParams?.retentionTarget ?? 0.9,
       },
       customRetentionDecks,
+      examDate: studentParams?.examDate?.toISOString() ?? null,
+      reviewIntensity,
     };
   },
 
   /**
-   * Update student retention target. Creates student FsrsParams row if needed (copies tenant w).
+   * Update student settings. Creates student FsrsParams row if needed (copies tenant w).
+   * Supports retention target, exam date, and manual override flag.
    */
   async updateSettings(
     tenantId: string,
     userId: string,
-    input: { retentionTarget: number }
+    input: {
+      retentionTarget?: number;
+      examDate?: string | null;
+      retentionManualOverride?: boolean;
+    }
   ) {
-    const r = Math.max(0.7, Math.min(0.97, input.retentionTarget));
     const [tenantParams, existing] = await Promise.all([
       prisma.fsrsParams.findFirst({
         where: { tenantId, userId: null },
@@ -1144,16 +1218,62 @@ export const flashcardService = {
       }),
     ]);
     const w = existing?.w ?? tenantParams?.w ?? defaultFsrsW();
+
+    // Build the update payload
+    const update: Record<string, unknown> = {};
+    const create: Record<string, unknown> = {
+      tenantId,
+      userId,
+      w,
+      retentionTarget: existing?.retentionTarget ?? tenantParams?.retentionTarget ?? 0.9,
+      isOptimized: false,
+    };
+
+    // Handle retention target
+    if (input.retentionTarget != null) {
+      const r = Math.max(0.7, Math.min(0.97, input.retentionTarget));
+      update.retentionTarget = r;
+      create.retentionTarget = r;
+
+      // If setting retention while exam date is active → manual override
+      const hasExamDate = input.examDate !== undefined
+        ? input.examDate !== null
+        : existing?.examDate != null;
+      if (hasExamDate && input.retentionManualOverride !== false) {
+        update.retentionManualOverride = true;
+        create.retentionManualOverride = true;
+      }
+    }
+
+    // Handle exam date
+    if (input.examDate !== undefined) {
+      if (input.examDate === null) {
+        // Clearing exam date → reset override
+        update.examDate = null;
+        update.retentionManualOverride = false;
+        create.examDate = null;
+        create.retentionManualOverride = false;
+      } else {
+        update.examDate = new Date(input.examDate);
+        create.examDate = new Date(input.examDate);
+        // Setting exam date → auto mode unless retention is also being set
+        if (input.retentionTarget == null) {
+          update.retentionManualOverride = false;
+          create.retentionManualOverride = false;
+        }
+      }
+    }
+
+    // Handle explicit override toggle (e.g., "Use suggestion" button)
+    if (input.retentionManualOverride === false && input.retentionTarget == null) {
+      update.retentionManualOverride = false;
+      create.retentionManualOverride = false;
+    }
+
     await prisma.fsrsParams.upsert({
       where: { tenantId_userId: { tenantId, userId } },
-      create: {
-        tenantId,
-        userId,
-        w,
-        retentionTarget: r,
-        isOptimized: false,
-      },
-      update: { retentionTarget: r },
+      create: create as Parameters<typeof prisma.fsrsParams.create>[0]["data"],
+      update,
     });
     return this.getSettings(tenantId, userId);
   },

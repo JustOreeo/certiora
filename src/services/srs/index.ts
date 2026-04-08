@@ -1,7 +1,8 @@
 import { prisma, tenantScope } from "@/lib/db";
 import { SRS_DEFAULTS } from "@/config/constants";
 import { schedule, intervalPreview } from "@/lib/fsrs";
-import { resolveRetentionTarget } from "@/lib/fsrs";
+import { resolveRetentionTarget, computeReviewIntensity, computePhase } from "@/lib/fsrs";
+import { computeCoverage } from "@/lib/fsrs/coverage";
 import type { FsrsStateInput } from "@/lib/fsrs";
 
 /**
@@ -110,33 +111,77 @@ export const srsService = {
   ): Promise<DueCard[]> {
     const now = new Date();
 
-    const [legacyCards, customStates] = await Promise.all([
-      options?.deckId
-        ? [] // deck filter: only custom cards from that deck
-        : prisma.srsCard.findMany({
-            where: {
-              ...tenantScope(tenantId),
-              userId,
-              nextReviewAt: { lte: now },
-            },
-            orderBy: { nextReviewAt: "asc" },
-            take: limit,
-            include: { question: true },
-          }),
+    // Check exam-based new card throttling
+    const studentParamsForThrottle = await prisma.fsrsParams.findUnique({
+      where: { tenantId_userId: { tenantId, userId } },
+    });
+    let newCardSlots: number | null = null;
+    if (studentParamsForThrottle?.examDate) {
+      const coverage = await computeCoverage(tenantId, userId, options?.deckId);
+      const intensity = computeReviewIntensity({
+        examDate: studentParamsForThrottle.examDate,
+        coveragePercent: coverage.coveragePercent,
+        totalCards: coverage.totalCards,
+      });
+      if (intensity) {
+        const todayStart = new Date(now);
+        todayStart.setHours(0, 0, 0, 0);
+        const newCardsSeenToday = await prisma.flashcardReviewLog.count({
+          where: {
+            ...tenantScope(tenantId),
+            userId,
+            state: "NEW",
+            reviewedAt: { gte: todayStart },
+          },
+        });
+        newCardSlots = Math.max(0, intensity.effectiveNewCardLimit - newCardsSeenToday);
+      }
+    }
+
+    const deckFilter = options?.deckId ? { card: { deckId: options.deckId } } : {};
+    const customInclude = { card: { include: { deck: { select: { id: true, name: true } } } } } as const;
+
+    // Helper to run the standard query (reused for both paths to preserve type)
+    const fetchCustomStates = (extraWhere: Record<string, unknown> = {}, take = limit) =>
       prisma.flashcardCardSrsState.findMany({
         where: {
-          ...tenantScope(tenantId),
-          userId,
+          ...tenantScope(tenantId), userId,
           nextReviewAt: { lte: now },
-          ...(options?.deckId && { card: { deckId: options.deckId } }),
+          ...deckFilter,
+          ...extraWhere,
         },
-        orderBy: { nextReviewAt: "asc" },
-        take: limit,
-        include: {
-          card: { include: { deck: { select: { id: true, name: true } } } },
-        },
-      }),
-    ]);
+        orderBy: { nextReviewAt: "asc" as const },
+        take,
+        include: customInclude,
+      });
+
+    let customStates: Awaited<ReturnType<typeof fetchCustomStates>>;
+    if (newCardSlots !== null) {
+      const [reviewCards, newCards] = await Promise.all([
+        fetchCustomStates({ state: { not: "NEW" as const } }),
+        newCardSlots > 0
+          ? fetchCustomStates({ state: "NEW" as const }, Math.min(limit, newCardSlots))
+          : Promise.resolve([] as Awaited<ReturnType<typeof fetchCustomStates>>),
+      ]);
+      customStates = [...reviewCards, ...newCards]
+        .sort((a, b) => a.nextReviewAt.getTime() - b.nextReviewAt.getTime())
+        .slice(0, limit);
+    } else {
+      customStates = await fetchCustomStates();
+    }
+
+    const legacyCards = options?.deckId
+      ? []
+      : await prisma.srsCard.findMany({
+          where: {
+            ...tenantScope(tenantId),
+            userId,
+            nextReviewAt: { lte: now },
+          },
+          orderBy: { nextReviewAt: "asc" },
+          take: limit,
+          include: { question: true },
+        });
 
     const examItems: DueCardExam[] = legacyCards.map((c) => ({
       cardType: "exam",
@@ -298,9 +343,21 @@ export const srsService = {
     ]);
     const { defaultFsrsW } = await import("@/lib/fsrs");
     const w = (studentParams ?? tenantParams)?.w ?? defaultFsrsW();
+
+    // Phase-aware retention: use phase suggestion when exam active and not manually overridden
+    let effectiveStudentRetention = studentParams?.retentionTarget ?? null;
+    if (studentParams?.examDate && !studentParams.retentionManualOverride) {
+      const msRemaining = studentParams.examDate.getTime() - Date.now();
+      const daysUntilExam = Math.floor(msRemaining / (24 * 60 * 60 * 1000));
+      const phase = computePhase(daysUntilExam);
+      if (phase) {
+        effectiveStudentRetention = phase.retentionTarget;
+      }
+    }
+
     const retentionTarget = resolveRetentionTarget({
       deckRetentionTarget: state.card.deck.retentionTarget ?? null,
-      studentRetentionTarget: studentParams?.retentionTarget ?? null,
+      studentRetentionTarget: effectiveStudentRetention,
       tenantRetentionTarget: tenantParams?.retentionTarget ?? null,
     });
 
@@ -467,36 +524,123 @@ export const srsService = {
     const batchSize = options?.batchSize ?? 10;
     const now = new Date();
 
-    const cursorFilter = options?.cursor
-      ? (() => {
-          const [isoDate, id] = options.cursor!.split("|");
-          const cursorDate = new Date(isoDate);
-          return {
-            OR: [
-              { nextReviewAt: { lt: cursorDate } },
-              { nextReviewAt: cursorDate, id: { gt: id } },
-            ],
-          };
-        })()
-      : {};
-
-    const customStates = await prisma.flashcardCardSrsState.findMany({
-      where: {
-        ...tenantScope(tenantId),
-        userId,
-        nextReviewAt: { lte: now },
-        ...(options?.deckId && { card: { deckId: options.deckId } }),
-        ...cursorFilter,
-      },
-      orderBy: [{ nextReviewAt: "asc" }, { id: "asc" }],
-      take: batchSize + 1,
-      include: {
-        card: { include: { deck: { select: { id: true, name: true, retentionTarget: true } } } },
-      },
+    // Check if exam-based new card throttling is active
+    const studentParams = await prisma.fsrsParams.findUnique({
+      where: { tenantId_userId: { tenantId, userId } },
     });
 
-    const hasMore = customStates.length > batchSize;
-    const states = hasMore ? customStates.slice(0, batchSize) : customStates;
+    let newCardSlots: number | null = null; // null = no limit (legacy behavior)
+    if (studentParams?.examDate) {
+      const coverage = await computeCoverage(tenantId, userId, options?.deckId);
+      const intensity = computeReviewIntensity({
+        examDate: studentParams.examDate,
+        coveragePercent: coverage.coveragePercent,
+        totalCards: coverage.totalCards,
+      });
+      if (intensity) {
+        const todayStart = new Date(now);
+        todayStart.setHours(0, 0, 0, 0);
+        const newCardsSeenToday = await prisma.flashcardReviewLog.count({
+          where: {
+            ...tenantScope(tenantId),
+            userId,
+            state: "NEW",
+            reviewedAt: { gte: todayStart },
+          },
+        });
+        newCardSlots = Math.max(0, intensity.effectiveNewCardLimit - newCardsSeenToday);
+      }
+    }
+
+    const deckFilter = options?.deckId ? { card: { deckId: options.deckId } } : {};
+    const includeOpts = {
+      card: { include: { deck: { select: { id: true, name: true, retentionTarget: true } } } },
+    };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let states: any[];
+    let hasMore: boolean;
+
+    if (newCardSlots !== null) {
+      // Split query: review cards + limited new cards
+      const cursorFilter = options?.cursor
+        ? (() => {
+            const [isoDate, id] = options.cursor!.split("|");
+            const cursorDate = new Date(isoDate);
+            return {
+              OR: [
+                { nextReviewAt: { lt: cursorDate } },
+                { nextReviewAt: cursorDate, id: { gt: id } },
+              ],
+            };
+          })()
+        : {};
+
+      const [reviewStatesRaw, newStatesRaw] = await Promise.all([
+        prisma.flashcardCardSrsState.findMany({
+          where: {
+            ...tenantScope(tenantId),
+            userId,
+            nextReviewAt: { lte: now },
+            state: { not: "NEW" },
+            ...deckFilter,
+            ...cursorFilter,
+          },
+          orderBy: [{ nextReviewAt: "asc" }, { id: "asc" }],
+          take: batchSize + 1,
+          include: includeOpts,
+        }),
+        newCardSlots > 0
+          ? prisma.flashcardCardSrsState.findMany({
+              where: {
+                ...tenantScope(tenantId),
+                userId,
+                nextReviewAt: { lte: now },
+                state: "NEW",
+                ...deckFilter,
+              },
+              orderBy: [{ nextReviewAt: "asc" }, { id: "asc" }],
+              take: Math.min(batchSize, newCardSlots),
+              include: includeOpts,
+            })
+          : [],
+      ]);
+
+      // Merge, sort, slice to batchSize
+      const merged = [...reviewStatesRaw, ...newStatesRaw]
+        .sort((a, b) => a.nextReviewAt.getTime() - b.nextReviewAt.getTime() || a.id.localeCompare(b.id));
+      hasMore = merged.length > batchSize;
+      states = hasMore ? merged.slice(0, batchSize) : merged;
+    } else {
+      // Legacy single query (no exam date)
+      const cursorFilter = options?.cursor
+        ? (() => {
+            const [isoDate, id] = options.cursor!.split("|");
+            const cursorDate = new Date(isoDate);
+            return {
+              OR: [
+                { nextReviewAt: { lt: cursorDate } },
+                { nextReviewAt: cursorDate, id: { gt: id } },
+              ],
+            };
+          })()
+        : {};
+
+      const customStates = await prisma.flashcardCardSrsState.findMany({
+        where: {
+          ...tenantScope(tenantId),
+          userId,
+          nextReviewAt: { lte: now },
+          ...deckFilter,
+          ...cursorFilter,
+        },
+        orderBy: [{ nextReviewAt: "asc" }, { id: "asc" }],
+        take: batchSize + 1,
+        include: includeOpts,
+      });
+      hasMore = customStates.length > batchSize;
+      states = hasMore ? customStates.slice(0, batchSize) : customStates;
+    }
 
     let customItems: DueCardCustom[] = states.map((s) => ({
       cardType: "custom" as const,
@@ -510,10 +654,7 @@ export const srsService = {
     }));
 
     if (customItems.length > 0) {
-      const [tenantParams, studentParams] = await Promise.all([
-        prisma.fsrsParams.findFirst({ where: { tenantId, userId: null } }),
-        prisma.fsrsParams.findUnique({ where: { tenantId_userId: { tenantId, userId } } }),
-      ]);
+      const tenantParams = await prisma.fsrsParams.findFirst({ where: { tenantId, userId: null } });
       const { defaultFsrsW } = await import("@/lib/fsrs");
       const w = (studentParams ?? tenantParams)?.w ?? defaultFsrsW();
       const baseRTarget = resolveRetentionTarget({
