@@ -4,6 +4,9 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { MarkdownCardContent } from "@/components/MarkdownCardContent";
+import { Spinner } from "@/components/ui/Spinner";
+import { QuestionCircleIcon, LightbulbIcon, CelebrationIcon, EmptyBoxIcon, HintIcon, CheckCircleIcon } from "@/components/ui/Icons";
+import { GRADE_BUTTONS, GradeIcon, formatIntervalShort } from "../_components/flashcard-constants";
 import { useCountUp } from "@/hooks/useCountUp";
 import confetti from "canvas-confetti";
 
@@ -19,54 +22,11 @@ type DueCardCustom = {
   intervalPreview?: { grade: 1 | 2 | 3 | 4; scheduledDays: number }[];
 };
 
-const GRADE_BUTTONS: {
-  label: string;
-  emoji: string;
-  grade: 1 | 2 | 3 | 4;
-  key: string;
-  border: string;
-  hover: string;
-}[] = [
-  { label: "Not yet", emoji: "❗", grade: 1, key: "1", border: "border-red-300", hover: "hover:bg-red-50" },
-  { label: "Almost had it", emoji: "🤔", grade: 2, key: "2", border: "border-orange-300", hover: "hover:bg-orange-50" },
-  { label: "I remember this", emoji: "👍", grade: 3, key: "3", border: "border-green-300", hover: "hover:bg-green-50" },
-  { label: "Too easy for me", emoji: "🚀", grade: 4, key: "4", border: "border-blue-300", hover: "hover:bg-blue-50" },
-];
-
-function formatInterval(days: number): string {
-  if (days < 1) return "< 1d";
-  if (days === 1) return "1d";
-  if (days < 30) return `${days}d`;
-  if (days < 365) return `${Math.round(days / 30)}mo`;
-  return `${(days / 365).toFixed(1)}y`;
-}
-
 function formatTime(ms: number): string {
   const s = Math.floor(ms / 1000);
   const m = Math.floor(s / 60);
   const sec = s % 60;
   return m > 0 ? `${m}m ${sec}s` : `${sec}s`;
-}
-
-function Spinner() {
-  return (
-    <svg className="animate-spin" width="20" height="20" viewBox="0 0 24 24" fill="none">
-      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeOpacity="0.25" />
-      <path d="M4 12a8 8 0 018-8" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-/* ── Floating "+1" particle ──────────────────────────────────────────── */
-function XpParticle({ id }: { id: number }) {
-  return (
-    <span
-      key={id}
-      className="absolute -top-1 left-1/2 -translate-x-1/2 text-xs font-bold text-primary pointer-events-none anim-fade-up"
-    >
-      +1
-    </span>
-  );
 }
 
 /* ── Session summary stat with count-up ──────────────────────────────── */
@@ -146,14 +106,10 @@ export default function StudyPage() {
   // Stats
   const [cardsReviewed, setCardsReviewed] = useState(0);
   const [cardsCorrect, setCardsCorrect] = useState(0);
-  const [xpEarned, setXpEarned] = useState(0);
-  const [xpParticles, setXpParticles] = useState<number[]>([]);
-  const [xpPop, setXpPop] = useState(false);
   const startTimeRef = useRef(Date.now());
   const [sessionDone, setSessionDone] = useState(false);
   const [deckName, setDeckName] = useState<string | null>(null);
   const [progressPulse, setProgressPulse] = useState(false);
-  const particleCounter = useRef(0);
   // Track card entrance key for animation re-trigger
   const [cardKey, setCardKey] = useState(0);
 
@@ -251,15 +207,6 @@ export default function StudyPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [flipped, grading, exitingCard, sessionDone, cards, hasFlippedOnce]);
 
-  const addXp = (amount: number) => {
-    setXpEarned((x) => x + amount);
-    setXpPop(true);
-    setTimeout(() => setXpPop(false), 300);
-    const pid = ++particleCounter.current;
-    setXpParticles((prev) => [...prev, pid]);
-    setTimeout(() => setXpParticles((prev) => prev.filter((p) => p !== pid)), 700);
-  };
-
   const pulseProgress = () => {
     setProgressPulse(true);
     setTimeout(() => setProgressPulse(false), 200);
@@ -277,7 +224,6 @@ export default function StudyPage() {
         setCardsReviewed((n) => n + 1);
         if (grade >= 3) {
           setCardsCorrect((n) => n + 1);
-          addXp(1);
         }
         pulseProgress();
         setFlipped(false);
@@ -319,7 +265,6 @@ export default function StudyPage() {
         setCardsReviewed((n) => n + 1);
         if (grade >= 3) {
           setCardsCorrect((n) => n + 1);
-          addXp(1);
         }
         pulseProgress();
         setFlipped(false);
@@ -361,7 +306,7 @@ export default function StudyPage() {
         await fetch(`/api/flashcards/study-sessions/${sessionId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ cardsReviewed, cardsCorrect, xpEarned, totalTimeMs }),
+          body: JSON.stringify({ cardsReviewed, cardsCorrect, totalTimeMs }),
         });
       } catch {
         // Non-critical
@@ -410,8 +355,6 @@ export default function StudyPage() {
   const currentCard = cards[0];
   const totalInSession = cardsReviewed + cards.length;
   const progressPercent = totalInSession > 0 ? (cardsReviewed / totalInSession) * 100 : 0;
-  const progressColor =
-    progressPercent < 34 ? "bg-primary" : progressPercent < 67 ? "bg-brand-400" : "bg-success";
   const exitAnimationClass =
     exitingCard && currentCard && exitingCard.cardId === currentCard.id
       ? exitingCard.grade === 1
@@ -438,9 +381,7 @@ export default function StudyPage() {
           {/* Animated checkmark */}
           <div className="flex justify-center">
             <div className="w-16 h-16 rounded-full bg-success-bg flex items-center justify-center anim-bounce-in">
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" className="text-success">
-                <path d="M5 13l4 4L19 7" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
+              <CheckCircleIcon className="w-8 h-8 text-success" />
             </div>
           </div>
 
@@ -454,13 +395,12 @@ export default function StudyPage() {
             <p className="text-sm text-secondary -mt-3">{deckName}</p>
           )}
 
-          <div className={`grid ${isCram ? "grid-cols-3" : "grid-cols-2"} gap-3`}>
+          <div className={`grid ${isCram ? "grid-cols-2" : "grid-cols-3"} gap-3`}>
             <SummaryStat value={cardsReviewed} label="Cards reviewed" delay={250} />
             {!isCram && (
               <SummaryStat value={accuracy} label="Accuracy" color={accuracyColor} delay={350} suffix="%" />
             )}
             <SummaryStatTime ms={totalTimeMs} label="Time spent" delay={450} />
-            <SummaryStat value={xpEarned} label="XP earned" color="text-primary" delay={550} />
           </div>
 
           <div
@@ -474,7 +414,6 @@ export default function StudyPage() {
                   setSessionDone(false);
                   setCardsReviewed(0);
                   setCardsCorrect(0);
-                  setXpEarned(0);
                   startTimeRef.current = Date.now();
                   loadCards();
                 }}
@@ -489,7 +428,6 @@ export default function StudyPage() {
                   setSessionDone(false);
                   setCardsReviewed(0);
                   setCardsCorrect(0);
-                  setXpEarned(0);
                   startTimeRef.current = Date.now();
                   loadCards();
                 }}
@@ -566,10 +504,11 @@ export default function StudyPage() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#E8EAF6]/40 p-4">
         <div className="w-full max-w-md bg-white border border-border rounded-2xl p-8 shadow-lg text-center space-y-4">
-          <div className="flex justify-center">
-            <div className="text-5xl anim-float">
-              {isCram ? "📦" : "🎉"}
-            </div>
+          <div className="flex justify-center anim-bounce-in">
+            {isCram
+              ? <EmptyBoxIcon className="w-14 h-14 text-secondary" />
+              : <CelebrationIcon className="w-14 h-14 text-primary" />
+            }
           </div>
           <h1 className="text-xl font-bold text-body">
             {isCram ? "No cards in this deck" : "You're all caught up!"}
@@ -600,19 +539,26 @@ export default function StudyPage() {
         }}
       />
 
-      {/* Top section: card counter + progress + XP */}
+      {/* Top section: card counter + progress */}
       <div className="relative z-10 flex flex-col items-center gap-3 px-4 pt-6 pb-2 max-w-4xl mx-auto w-full">
-        {/* Exit button — top left */}
-        <div className="absolute left-4 top-6">
+        {/* Exit controls — top left */}
+        <div className="absolute left-4 top-6 flex items-center gap-2">
           <Link
             href={`/${tenantSlug}/flashcards`}
-            className="w-9 h-9 flex items-center justify-center rounded-full border border-border bg-white text-body hover:bg-surface-base transition-colors shadow-sm"
+            className="w-9 h-9 flex items-center justify-center rounded-full border border-border bg-white text-body hover:bg-surface-base transition-colors shadow-sm cursor-pointer"
             aria-label="Exit study"
           >
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
               <path d="M12 4L4 12M4 4l8 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
             </svg>
           </Link>
+          <button
+            type="button"
+            onClick={handleEndSession}
+            className="h-9 px-4 rounded-full border border-border bg-white text-sm font-medium text-body hover:bg-surface-base transition-colors shadow-sm cursor-pointer"
+          >
+            End Session
+          </button>
         </div>
 
         {/* Deck name */}
@@ -632,27 +578,18 @@ export default function StudyPage() {
               Cram
             </span>
           )}
-          {/* XP badge */}
-          <div className="relative" aria-live="polite">
-            {xpEarned > 0 && (
-              <span
-                className={`inline-flex items-center gap-1 text-xs font-bold rounded-full px-2.5 py-1 bg-primary text-inverse shadow-md transition-transform ${xpPop ? "anim-pop" : ""}`}
-              >
-                <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" className="opacity-80">
-                  <path d="M8 1l2.47 4.38L16 6.28l-3.64 3.84L13.18 16 8 13.28 2.82 16l.82-5.88L0 6.28l5.53-.9z" />
-                </svg>
-                +{xpEarned}
-              </span>
-            )}
-            {xpParticles.map((id) => (
-              <XpParticle key={id} id={id} />
-            ))}
-          </div>
         </div>
 
         {/* Progress bar */}
         <div className="w-full max-w-4xl">
-          <div className="h-2.5 rounded-full bg-white/70 border border-border/50 overflow-hidden shadow-inner">
+          <div
+            className="h-2.5 rounded-full bg-white/70 border border-border/50 overflow-hidden shadow-inner"
+            role="progressbar"
+            aria-valuenow={Math.round(progressPercent)}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-label="Study progress"
+          >
             <div
               className={`h-full rounded-full transition-[width] duration-500 ease-out relative bg-gradient-to-r from-primary to-[#7C3AED] ${progressPulse ? "animate-pulse" : ""}`}
               style={{ width: `${Math.min(100, progressPercent)}%` }}
@@ -694,7 +631,7 @@ export default function StudyPage() {
                   aria-hidden={flipped}
                 >
                   <div className="flex flex-col items-center gap-1 mb-5">
-                    <span className="text-2xl mb-1" aria-hidden>❓</span>
+                    <QuestionCircleIcon className="w-7 h-7 text-indigo-500 mb-1" />
                     <h2 className="text-xl font-bold text-indigo-900">Question</h2>
                   </div>
                   <div className="flex-1 bg-white/80 backdrop-blur-sm rounded-2xl p-5 sm:p-7 flex items-center shadow-sm border border-white/60">
@@ -714,7 +651,7 @@ export default function StudyPage() {
                   aria-hidden={!flipped}
                 >
                   <div className="flex flex-col items-center gap-1 mb-5">
-                    <span className="text-2xl mb-1" aria-hidden>💡</span>
+                    <LightbulbIcon className="w-7 h-7 text-green-600 mb-1" />
                     <h2 className="text-xl font-bold text-green-900">Answer</h2>
                   </div>
                   <div className="flex-1 bg-white/80 backdrop-blur-sm rounded-2xl p-5 sm:p-7 flex items-center shadow-sm border border-white/60">
@@ -736,7 +673,7 @@ export default function StudyPage() {
 
             {/* Grade buttons — always rendered to reserve space, hidden when not flipped */}
             <div
-              className={`mt-5 grid grid-cols-4 gap-2 sm:gap-3 transition-opacity duration-300 ${
+              className={`mt-5 grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 transition-opacity duration-300 ${
                 flipped ? "opacity-100" : "opacity-0 pointer-events-none"
               }`}
             >
@@ -746,16 +683,17 @@ export default function StudyPage() {
                   type="button"
                   disabled={grading || !flipped}
                   onClick={() => gradeCard(currentCard, btn.grade)}
-                  className={`flex items-center gap-2 justify-center py-3 px-3 rounded-xl border-2 bg-white font-medium transition-all duration-150 hover:scale-[1.03] active:scale-95 disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 shadow-sm ${btn.border} ${btn.hover}`}
+                  aria-label={`${btn.label} (${btn.key})${!isCram && intervalPreview && intervalPreview[btn.grade] != null ? ` — next review in ${formatIntervalShort(intervalPreview[btn.grade])}` : ""}`}
+                  className={`flex items-center gap-2 justify-center min-h-[48px] py-3 px-3 rounded-xl border-2 bg-surface-card font-medium transition-all duration-150 cursor-pointer hover:scale-[1.03] active:scale-95 disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 shadow-sm ${btn.border} ${btn.hover}`}
                 >
-                  <span className="text-base" aria-hidden>{btn.emoji}</span>
+                  <GradeIcon grade={btn.grade} className="w-5 h-5 shrink-0" />
                   <span className="text-sm text-body">
                     <span className="font-semibold">{btn.key}</span>
                     <span> - {btn.label}</span>
                   </span>
                   {!isCram && intervalPreview && intervalPreview[btn.grade] != null && (
                     <span className="text-xs text-secondary font-mono tabular-nums ml-auto">
-                      {formatInterval(intervalPreview[btn.grade])}
+                      {formatIntervalShort(intervalPreview[btn.grade])}
                     </span>
                   )}
                 </button>
@@ -778,7 +716,7 @@ export default function StudyPage() {
 
             {/* Keyboard hint */}
             <p className="text-center text-xs text-muted mt-3">
-              <span className="opacity-60">💡</span>{" "}
+              <HintIcon className="w-3.5 h-3.5 inline text-muted opacity-60" />{" "}
               <kbd className="px-1.5 py-0.5 bg-white/60 rounded text-[11px] font-mono border border-border/50">Space</kbd>{" "}
               to flip
               {flipped && (
