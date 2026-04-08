@@ -182,7 +182,7 @@ export default function DeckDetailPage() {
   const [tagInput, setTagInput] = useState("");
   const [addingTag, setAddingTag] = useState(false);
   const [viewMode, setViewMode] = useState<"cards" | "table">("cards");
-  const [cardPageSize, setCardPageSize] = useState(20);
+  const [cardPageSize, setCardPageSize] = useState(10);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -947,6 +947,7 @@ export default function DeckDetailPage() {
                     className="h-8 pl-2 pr-6 rounded-md border border-border bg-surface-base text-xs text-body cursor-pointer"
                     aria-label="Cards per page"
                   >
+                    <option value={10}>10 / page</option>
                     <option value={20}>20 / page</option>
                     <option value={50}>50 / page</option>
                     <option value={100}>100 / page</option>
