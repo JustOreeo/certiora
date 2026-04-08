@@ -8,6 +8,7 @@ import { Spinner } from "@/components/ui/Spinner";
 import { SourceBadge } from "../../_components/SourceBadge";
 import { CardEditorModal } from "../../_components/CardEditorModal";
 import { DeckUpdateDiffModal } from "../../_components/DeckUpdateDiffModal";
+import { OverrideConfirmModal } from "../../_components/FlashcardsSettingsTab";
 import { BulkCardEditor } from "../../_components/BulkCardEditor";
 import { CsvImportDialog } from "../../_components/CsvImportDialog";
 import { MarkdownCardContent } from "@/components/MarkdownCardContent";
@@ -61,6 +62,8 @@ type Deck = {
   tags: { id: string; name: string }[];
   cardCount: number;
   dueToday: number;
+  accountRetentionTarget: number;
+  examPhaseLabel: string | null;
 };
 
 
@@ -176,8 +179,10 @@ export default function DeckDetailPage() {
   const [bulkEditorOpen, setBulkEditorOpen] = useState(false);
   const [csvImportOpen, setCsvImportOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
-  const [accountRetentionTarget, setAccountRetentionTarget] = useState<number>(0.9);
+  const accountRetentionTarget = deck?.accountRetentionTarget ?? null;
+  const examPhaseLabel = deck?.examPhaseLabel ?? null;
   const [retentionSaving, setRetentionSaving] = useState(false);
+  const [pendingRetention, setPendingRetention] = useState<number | null | undefined>(undefined);
   const [deckToast, setDeckToast] = useState<string | null>(null);
   const [tagInput, setTagInput] = useState("");
   const [addingTag, setAddingTag] = useState(false);
@@ -264,20 +269,7 @@ export default function DeckDetailPage() {
     loadCards(1, debouncedCardSearch);
   }, [loadCards, debouncedCardSearch]);
 
-  useEffect(() => {
-    if (!deckId) return;
-    let cancelled = false;
-    fetch("/api/flashcards/settings")
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (!cancelled && data?.retentionTarget != null)
-          setAccountRetentionTarget(data.retentionTarget);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [deckId]);
+  // accountRetentionTarget and examPhaseLabel are now derived from the deck response
 
   const handleAddCard = () => {
     setEditingCard(null);
@@ -370,7 +362,7 @@ export default function DeckDetailPage() {
     }
   };
 
-  const handleRetentionChange = async (value: number | null) => {
+  const applyRetentionChange = async (value: number | null) => {
     if (!deck) return;
     setRetentionSaving(true);
     try {
@@ -388,6 +380,22 @@ export default function DeckDetailPage() {
     } finally {
       setRetentionSaving(false);
     }
+  };
+
+  const handleRetentionChange = (value: number | null) => {
+    // Overriding away from "Follow account schedule" when exam is active → confirm
+    if (value !== null && examPhaseLabel) {
+      setPendingRetention(value);
+      return;
+    }
+    applyRetentionChange(value);
+  };
+
+  const confirmRetentionOverride = () => {
+    if (pendingRetention === undefined) return;
+    const v = pendingRetention;
+    setPendingRetention(undefined);
+    applyRetentionChange(v);
   };
 
   const handleExportCsv = async () => {
@@ -613,18 +621,25 @@ export default function DeckDetailPage() {
             className="rounded-lg border border-border bg-surface-base px-3 py-2 text-sm text-body disabled:opacity-50"
           >
             <option value="default">
-              Use account default ({Math.round(accountRetentionTarget * 100)}%)
+              {accountRetentionTarget != null
+                ? `Follow account schedule (${Math.round(accountRetentionTarget * 100)}%${examPhaseLabel ? ` — ${examPhaseLabel} phase` : ""})`
+                : "Follow account schedule"}
             </option>
-            <option value="0.7">70% — Lightest</option>
-            <option value="0.8">80% — Light</option>
-            <option value="0.9">90% — Standard</option>
-            <option value="0.95">95% — Thorough</option>
-            <option value="0.97">97% — Maximum</option>
+            <option value="0.7">Fix at 70% — Fewer reviews</option>
+            <option value="0.8">Fix at 80% — Light reviews</option>
+            <option value="0.9">Fix at 90% — Moderate reviews</option>
+            <option value="0.95">Fix at 95% — Frequent reviews</option>
+            <option value="0.97">Fix at 97% — Most frequent</option>
           </select>
           {deck.retentionTarget != null && (
             <p className="text-xs text-secondary mt-2">
-              Cards in this deck will return more or less often than your other decks. Takes effect
-              at your next review.
+              This deck is fixed at {Math.round(deck.retentionTarget * 100)}% and won&apos;t follow
+              your {examPhaseLabel ? "exam schedule" : "account default"}. Takes effect at your next review.
+            </p>
+          )}
+          {deck.retentionTarget == null && examPhaseLabel && (
+            <p className="text-xs text-secondary mt-2">
+              This deck follows your exam schedule and will adjust automatically as your exam approaches.
             </p>
           )}
           {deck.source === "ADMIN_SEEDED" && deck.suggestedRetentionTarget != null && (
@@ -1006,6 +1021,11 @@ export default function DeckDetailPage() {
         existing={editingCard}
       />
 
+      <OverrideConfirmModal
+        open={pendingRetention !== undefined}
+        onConfirm={confirmRetentionOverride}
+        onCancel={() => setPendingRetention(undefined)}
+      />
       <DeckUpdateDiffModal
         open={updateDiffOpen}
         deckId={deckId}

@@ -30,6 +30,27 @@ function formatOptimizedAt(iso: string): string {
   return d.toLocaleDateString();
 }
 
+const PHASE_COLORS: Record<string, string> = {
+  BUILD: "bg-emerald-100 text-emerald-700 border-emerald-200",
+  STRENGTHEN: "bg-sky-100 text-sky-700 border-sky-200",
+  CONSOLIDATE: "bg-amber-100 text-amber-700 border-amber-200",
+  SHARPEN: "bg-orange-100 text-orange-700 border-orange-200",
+  PEAK: "bg-red-100 text-red-700 border-red-200",
+};
+
+type ReviewIntensityInfo = {
+  phase: string;
+  phaseLabel: string;
+  phaseDescription: string;
+  daysRemaining: number;
+  suggestedRetentionTarget: number;
+  effectiveRetentionTarget: number;
+  isManualOverride: boolean;
+  coveragePercent: number;
+  coverageOverrideApplied: boolean;
+  effectiveNewCardLimit: number;
+};
+
 export type FsrsSettings = {
   retentionTarget: number;
   isOptimized: boolean;
@@ -45,7 +66,56 @@ export type FsrsSettings = {
     retentionTarget: number | null;
   }>;
   optimizeJobQueuedOrActive?: boolean;
+  examDate: string | null;
+  reviewIntensity: ReviewIntensityInfo | null;
 };
+
+export function OverrideConfirmModal({
+  open,
+  onConfirm,
+  onCancel,
+}: {
+  open: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+      <div className="bg-surface-card border border-border rounded-xl shadow-lg max-w-md mx-4 p-6">
+        <h3 className="text-base font-semibold text-heading mb-2">
+          Change review schedule?
+        </h3>
+        <p className="text-sm text-body mb-3">
+          Your review schedule is currently set up to match your exam timeline.
+          The system learns how quickly you forget and adjusts the timing of each
+          card so you remember it right when it matters most.
+        </p>
+        <p className="text-sm text-body mb-4">
+          Changing this manually means your reviews won&apos;t adapt as your exam
+          gets closer. Most students get better results by letting the system
+          handle this automatically.
+        </p>
+        <div className="flex justify-end gap-3">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="h-9 px-4 rounded-lg text-sm font-semibold bg-primary text-inverse hover:bg-primary-hover"
+          >
+            Keep current schedule
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            className="h-9 px-4 rounded-lg text-sm font-medium text-secondary hover:text-body border border-border"
+          >
+            Change anyway
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export function FlashcardsSettingsTab({ tenantSlug }: { tenantSlug: string }) {
   const [settings, setSettings] = useState<FsrsSettings | null>(null);
@@ -53,6 +123,8 @@ export function FlashcardsSettingsTab({ tenantSlug }: { tenantSlug: string }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [examDateInput, setExamDateInput] = useState("");
+  const [pendingRetention, setPendingRetention] = useState<number | null>(null);
 
   const showToast = (message: string) => {
     setToast(message);
@@ -65,6 +137,9 @@ export function FlashcardsSettingsTab({ tenantSlug }: { tenantSlug: string }) {
       if (!res.ok) throw new Error("Failed to load settings");
       const data = await res.json();
       setSettings(data);
+      if (data.examDate) {
+        setExamDateInput(data.examDate.slice(0, 10));
+      }
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Something went wrong");
@@ -118,24 +193,63 @@ export function FlashcardsSettingsTab({ tenantSlug }: { tenantSlug: string }) {
     }
   };
 
-  const handleRetentionChange = async (value: number) => {
-    if (!settings || saving || Math.abs(settings.retentionTarget - value) < 0.001) return;
+  const patchSettings = async (body: Record<string, unknown>, toastMsg: string) => {
     setSaving(true);
     try {
       const res = await fetch("/api/flashcards/settings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ retentionTarget: value }),
+        body: JSON.stringify(body),
       });
       if (!res.ok) throw new Error("Failed to update");
       const data = await res.json();
       setSettings(data);
-      showToast("Review intensity updated.");
+      if (data.examDate) {
+        setExamDateInput(data.examDate.slice(0, 10));
+      } else {
+        setExamDateInput("");
+      }
+      showToast(toastMsg);
     } catch (e) {
       showToast(e instanceof Error ? e.message : "Update failed.");
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleRetentionChange = async (value: number) => {
+    if (!settings || saving || Math.abs(settings.retentionTarget - value) < 0.001) return;
+    // Show confirmation when exam schedule is active (auto mode)
+    if (settings.reviewIntensity && !settings.reviewIntensity.isManualOverride) {
+      setPendingRetention(value);
+      return;
+    }
+    await patchSettings({ retentionTarget: value }, "Review intensity updated.");
+  };
+
+  const confirmRetentionOverride = async () => {
+    if (pendingRetention == null) return;
+    setPendingRetention(null);
+    await patchSettings({ retentionTarget: pendingRetention }, "Review intensity updated.");
+  };
+
+  const handleSetExamDate = async () => {
+    if (!examDateInput || saving) return;
+    await patchSettings(
+      { examDate: new Date(examDateInput + "T00:00:00Z").toISOString() },
+      "Exam date set. Review intensity will adapt automatically."
+    );
+  };
+
+  const handleClearExamDate = async () => {
+    if (saving) return;
+    setExamDateInput("");
+    await patchSettings({ examDate: null }, "Exam date cleared.");
+  };
+
+  const handleUseSuggestion = async () => {
+    if (saving) return;
+    await patchSettings({ retentionManualOverride: false }, "Using exam-based suggestion.");
   };
 
   if (loading) {
@@ -158,6 +272,9 @@ export function FlashcardsSettingsTab({ tenantSlug }: { tenantSlug: string }) {
 
   const tenantPct = Math.round(settings.tenantDefault.retentionTarget * 100);
   const currentDays = intervalDaysAt(settings.retentionTarget);
+  const ri = settings.reviewIntensity;
+  const examActive = ri != null;
+  const autoMode = examActive && !ri.isManualOverride;
 
   return (
     <div className="space-y-8 relative">
@@ -169,6 +286,119 @@ export function FlashcardsSettingsTab({ tenantSlug }: { tenantSlug: string }) {
           {toast}
         </div>
       )}
+
+      <OverrideConfirmModal
+        open={pendingRetention != null}
+        onConfirm={confirmRetentionOverride}
+        onCancel={() => setPendingRetention(null)}
+      />
+
+      {/* Panel 0 — Exam countdown */}
+      <div className="bg-surface-card border border-border rounded-xl p-5 shadow-sm">
+        <h2 className="text-base font-semibold text-body mb-1">Board exam date</h2>
+        <p className="text-sm text-secondary mb-4">
+          Set your exam date and the system will automatically adjust review intensity as it approaches.
+        </p>
+
+        {!settings.examDate ? (
+          <div className="flex items-end gap-3">
+            <div className="flex-1">
+              <label htmlFor="exam-date" className="block text-xs font-medium text-secondary mb-1">
+                Exam date
+              </label>
+              <input
+                id="exam-date"
+                type="date"
+                value={examDateInput}
+                onChange={(e) => setExamDateInput(e.target.value)}
+                min={new Date().toISOString().slice(0, 10)}
+                className="w-full h-10 px-3 rounded-lg border border-border bg-surface-base text-body text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={handleSetExamDate}
+              disabled={saving || !examDateInput}
+              className="h-10 px-5 rounded-lg text-sm font-semibold bg-primary text-inverse hover:bg-primary-hover disabled:opacity-50"
+            >
+              Set date
+            </button>
+          </div>
+        ) : ri ? (
+          <div className="space-y-4">
+            {/* Countdown + phase badge */}
+            <div className="flex items-center gap-3 flex-wrap">
+              <span className="text-2xl font-bold text-heading tabular-nums">
+                {ri.daysRemaining}
+              </span>
+              <span className="text-sm text-secondary">
+                {ri.daysRemaining === 1 ? "day" : "days"} remaining
+              </span>
+              <span
+                className={`ml-auto px-2.5 py-0.5 rounded-full text-xs font-semibold border ${
+                  PHASE_COLORS[ri.phase] ?? "bg-surface-base text-body border-border"
+                }`}
+              >
+                {ri.phaseLabel}
+              </span>
+            </div>
+
+            {/* Phase description */}
+            <p className="text-sm text-secondary">{ri.phaseDescription}</p>
+
+            {/* Stats row */}
+            <div className="grid grid-cols-3 gap-3">
+              <div className="rounded-lg bg-surface-base border border-border px-3 py-2">
+                <p className="text-xs text-secondary">Target retention</p>
+                <p className="text-sm font-semibold text-body">
+                  {Math.round(ri.effectiveRetentionTarget * 100)}%
+                </p>
+              </div>
+              <div className="rounded-lg bg-surface-base border border-border px-3 py-2">
+                <p className="text-xs text-secondary">Cards seen</p>
+                <p className="text-sm font-semibold text-body">{ri.coveragePercent}%</p>
+              </div>
+              <div className="rounded-lg bg-surface-base border border-border px-3 py-2">
+                <p className="text-xs text-secondary">New cards/day</p>
+                <p className="text-sm font-semibold text-body">
+                  ~{ri.effectiveNewCardLimit}
+                </p>
+              </div>
+            </div>
+
+            {/* Coverage override notice */}
+            {ri.coverageOverrideApplied && (
+              <p className="text-xs text-amber-600 bg-amber-50 rounded-md px-3 py-2 border border-amber-200">
+                Coverage is below 50% — new cards are still being introduced aggressively despite the {ri.phaseLabel} phase.
+              </p>
+            )}
+
+            {/* Clear exam date */}
+            <button
+              type="button"
+              onClick={handleClearExamDate}
+              disabled={saving}
+              className="text-xs text-secondary hover:text-body underline disabled:opacity-50"
+            >
+              Clear exam date
+            </button>
+          </div>
+        ) : (
+          /* Exam date in the past */
+          <div className="rounded-lg bg-surface-base border border-border px-4 py-4 text-center">
+            <p className="text-sm text-secondary">Your exam date has passed.</p>
+            <button
+              type="button"
+              onClick={handleClearExamDate}
+              disabled={saving}
+              className="mt-2 text-sm text-primary hover:underline disabled:opacity-50"
+            >
+              Clear exam date
+            </button>
+          </div>
+        )}
+      </div>
+
       {/* Panel 1 — Review intensity */}
       <div className="bg-surface-card border border-border rounded-xl p-5 shadow-sm">
         <h2 className="text-base font-semibold text-body mb-1">Review intensity</h2>
@@ -176,6 +406,40 @@ export function FlashcardsSettingsTab({ tenantSlug }: { tenantSlug: string }) {
           Controls how often you see each card. Higher retention means more reviews per day — cards
           return sooner. Lower means fewer reviews, with some forgetting accepted.
         </p>
+
+        {/* Auto-managed notice when exam is active */}
+        {autoMode && (
+          <div className="rounded-md bg-primary/5 border border-primary/20 px-3 py-2 mb-4">
+            <p className="text-sm text-body">
+              Managed by exam schedule ({ri!.phaseLabel} phase — {Math.round(ri!.suggestedRetentionTarget * 100)}% retention).{" "}
+              <button
+                type="button"
+                onClick={() => handleRetentionChange(settings.retentionTarget)}
+                className="text-primary hover:underline font-medium"
+              >
+                Override manually
+              </button>
+            </p>
+          </div>
+        )}
+
+        {/* Manual override notice */}
+        {examActive && ri!.isManualOverride && (
+          <div className="rounded-md bg-amber-50 border border-amber-200 px-3 py-2 mb-4">
+            <p className="text-sm text-body">
+              You are overriding the exam suggestion (suggested: {Math.round(ri!.suggestedRetentionTarget * 100)}%).{" "}
+              <button
+                type="button"
+                onClick={handleUseSuggestion}
+                disabled={saving}
+                className="text-primary hover:underline font-medium disabled:opacity-50"
+              >
+                Use suggestion
+              </button>
+            </p>
+          </div>
+        )}
+
         <div
           className="flex flex-wrap gap-1 p-1 rounded-lg bg-surface-base border border-border"
           role="group"
@@ -188,7 +452,7 @@ export function FlashcardsSettingsTab({ tenantSlug }: { tenantSlug: string }) {
                 key={opt.value}
                 type="button"
                 onClick={() => handleRetentionChange(opt.value)}
-                disabled={saving}
+                disabled={saving || autoMode}
                 className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
                   isActive
                     ? "bg-primary text-inverse"
@@ -242,7 +506,7 @@ export function FlashcardsSettingsTab({ tenantSlug }: { tenantSlug: string }) {
           </div>
         )}
 
-        {/* State B: ≥ 1,000, not optimized, job not queued */}
+        {/* State B: >= 1,000, not optimized, job not queued */}
         {settings.reviewCount >= 1000 && !settings.isOptimized && !settings.optimizeJobQueuedOrActive && (
           <div className="rounded-lg bg-surface-base border border-border px-4 py-6 text-center">
             <p className="text-sm text-success font-medium">You&apos;ve completed {settings.reviewCount.toLocaleString()} reviews.</p>
@@ -331,7 +595,7 @@ export function FlashcardsSettingsTab({ tenantSlug }: { tenantSlug: string }) {
                   const pct = deck.retentionTarget != null ? Math.round(deck.retentionTarget * 100) : null;
                   const accountPct = Math.round(settings.retentionTarget * 100);
                   const diff = pct != null ? pct - accountPct : 0;
-                  const diffStr = diff > 0 ? `+${diff}%` : diff < 0 ? `${diff}%` : "—";
+                  const diffStr = diff > 0 ? `+${diff}%` : diff < 0 ? `${diff}%` : "---";
                   return (
                     <tr key={deck.id} className="border-b border-border last:border-0">
                       <td className="py-3 px-4">
@@ -343,7 +607,7 @@ export function FlashcardsSettingsTab({ tenantSlug }: { tenantSlug: string }) {
                         </Link>
                       </td>
                       <td className="text-right py-3 px-4 text-body">
-                        {pct != null ? `${pct}%` : "—"}
+                        {pct != null ? `${pct}%` : "---"}
                       </td>
                       <td className="text-right py-3 px-4 text-secondary">{diffStr}</td>
                     </tr>
