@@ -66,12 +66,20 @@ export function schedule(
       nextIntervalDays = Math.max(1, Math.round(stability));
       state = grade >= 2 ? "REVIEW" : input.state;
     } else {
-      // Graduation from learning. PRD §9.6 E — apply recall formula.
+      // Multi-day review from learning. PRD §9.6 E.
       retrievabilityAtReview = retrievability(elapsedDays, S);
       difficulty = nextDifficultyRecall(D, grade, w);
-      stability = stabilityAfterRecall(S, D, grade, retrievabilityAtReview, w);
-      nextIntervalDays = intervalFromStability(stability, retentionTarget);
-      state = "REVIEW";
+      if (grade === 1) {
+        // Lapse — failed recall after delay, stay in learning/relearning.
+        stability = stabilityAfterLapse(S, D, grade, retrievabilityAtReview, w);
+        nextIntervalDays = Math.max(1, Math.round(stability));
+        state = input.state === "RELEARNING" ? "RELEARNING" : "LEARNING";
+      } else {
+        // Successful recall — graduate to review.
+        stability = stabilityAfterRecall(S, D, grade, retrievabilityAtReview, w);
+        nextIntervalDays = intervalFromStability(stability, retentionTarget);
+        state = "REVIEW";
+      }
     }
   } else {
     // REVIEW state.
@@ -107,7 +115,7 @@ export function schedule(
     nextIntervalDays,
     nextReviewAt,
     reps,
-    lapses: input.lapses + (grade === 1 ? 1 : 0),
+    lapses: input.lapses + (grade === 1 && input.state === "REVIEW" ? 1 : 0),
     lastReviewAt,
   };
 
