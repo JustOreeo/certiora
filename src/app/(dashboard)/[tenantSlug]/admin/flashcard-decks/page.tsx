@@ -4,7 +4,6 @@ import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { toUserMessage } from "@/lib/errors";
 
 type AdminDeck = {
   id: string;
@@ -51,10 +50,6 @@ export default function AdminFlashcardDecksPage() {
 
   const [decks, setDecks] = useState<AdminDeck[]>([]);
   const [loading, setLoading] = useState(true);
-  const [creating, setCreating] = useState(false);
-  const [createName, setCreateName] = useState("");
-  const [createDescription, setCreateDescription] = useState("");
-  const [createModalOpen, setCreateModalOpen] = useState(false);
 
   const loadDecks = async () => {
     if (!tenantSlug) return;
@@ -73,43 +68,12 @@ export default function AdminFlashcardDecksPage() {
 
   useEffect(() => {
     if (tenantSlug) loadDecks();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenantSlug]);
 
   useEffect(() => {
     if (status === "unauthenticated") router.push("/login");
   }, [status, router]);
-
-  const handleCreate = async () => {
-    const name = createName.trim();
-    if (!name) {
-      alert("Enter a deck name.");
-      return;
-    }
-    setCreating(true);
-    try {
-      const res = await fetch(`/api/${tenantSlug}/admin/flashcard-decks`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name,
-          description: createDescription.trim() || null,
-        }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        alert(toUserMessage(data, "Failed to create deck."));
-        return;
-      }
-      setCreateModalOpen(false);
-      setCreateName("");
-      setCreateDescription("");
-      router.push(`/${tenantSlug}/admin/flashcard-decks/${data.id}`);
-    } catch (e) {
-      alert(toUserMessage(e, "Failed to create deck."));
-    } finally {
-      setCreating(false);
-    }
-  };
 
   const formatDate = (s: string) => {
     try {
@@ -126,7 +90,12 @@ export default function AdminFlashcardDecksPage() {
   return (
     <div className="p-6 max-w-5xl mx-auto">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-xl font-semibold text-body">Flashcard Decks</h1>
+        <div>
+          <h1 className="text-xl font-semibold text-body">Flashcard Decks</h1>
+          <p className="text-sm text-muted mt-0.5">
+            Decks are generated from PDF uploads via the Content Pipeline.
+          </p>
+        </div>
         <div className="flex items-center gap-2">
           <Link
             href={`/${tenantSlug}/admin/flashcard-decks/analytics`}
@@ -134,34 +103,32 @@ export default function AdminFlashcardDecksPage() {
           >
             Analytics
           </Link>
-          <button
-            type="button"
-            onClick={() => setCreateModalOpen(true)}
-            className="h-9 px-4 rounded-lg bg-brand-500 text-white text-sm font-medium hover:bg-brand-600 transition-colors"
+          <Link
+            href={`/${tenantSlug}/admin/source-materials`}
+            className="h-9 px-4 rounded-lg bg-primary text-inverse text-sm font-medium hover:bg-primary-hover transition-colors inline-flex items-center gap-2"
           >
-            New deck
-          </button>
+            Upload PDF
+          </Link>
         </div>
       </div>
 
       {loading ? (
         <div className="flex items-center gap-2 text-muted">
           <Spinner />
-          Loading…
+          Loading...
         </div>
       ) : decks.length === 0 ? (
         <div className="rounded-xl border border-border bg-surface-card p-8 text-center">
           <p className="text-body mb-2">No flashcard decks yet.</p>
           <p className="text-sm text-muted mb-4">
-            Create a deck, add cards, then publish it to your students.
+            Upload a PDF through the Content Pipeline to generate flashcard decks automatically.
           </p>
-          <button
-            type="button"
-            onClick={() => setCreateModalOpen(true)}
-            className="h-9 px-4 rounded-lg bg-brand-500 text-white text-sm font-medium hover:bg-brand-600 transition-colors"
+          <Link
+            href={`/${tenantSlug}/admin/source-materials`}
+            className="h-9 px-4 rounded-lg bg-primary text-inverse text-sm font-medium hover:bg-primary-hover transition-colors inline-flex items-center"
           >
-            Create deck
-          </button>
+            Go to Content Pipeline
+          </Link>
         </div>
       ) : (
         <div className="rounded-xl border border-border bg-surface-card overflow-hidden">
@@ -217,52 +184,6 @@ export default function AdminFlashcardDecksPage() {
               ))}
             </tbody>
           </table>
-        </div>
-      )}
-
-      {createModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
-          <div className="bg-surface-card rounded-xl border border-border shadow-xl w-full max-w-md p-6">
-            <h2 className="text-lg font-semibold text-body mb-4">Create deck</h2>
-            <label className="block text-sm font-medium text-body mb-1">Name</label>
-            <input
-              type="text"
-              value={createName}
-              onChange={(e) => setCreateName(e.target.value)}
-              placeholder="Deck name"
-              className="w-full h-10 px-3 text-sm border border-border rounded-lg bg-surface-base text-body placeholder:text-muted focus:outline-none focus:border-border-focus mb-4"
-              maxLength={100}
-            />
-            <label className="block text-sm font-medium text-body mb-1">Description (optional)</label>
-            <textarea
-              value={createDescription}
-              onChange={(e) => setCreateDescription(e.target.value)}
-              placeholder="Short description"
-              rows={2}
-              className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-surface-base text-body placeholder:text-muted focus:outline-none focus:border-border-focus mb-6 resize-none"
-              maxLength={300}
-            />
-            <div className="flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  if (!creating) setCreateModalOpen(false);
-                }}
-                className="h-9 px-4 rounded-lg border border-border text-body text-sm font-medium hover:bg-surface-sidebar/30"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleCreate}
-                disabled={creating || !createName.trim()}
-                className="h-9 px-4 rounded-lg bg-brand-500 text-white text-sm font-medium hover:bg-brand-600 disabled:opacity-50 flex items-center gap-2"
-              >
-                {creating ? <Spinner /> : null}
-                Create
-              </button>
-            </div>
-          </div>
         </div>
       )}
     </div>

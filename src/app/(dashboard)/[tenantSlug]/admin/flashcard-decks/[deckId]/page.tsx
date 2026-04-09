@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { toUserMessage } from "@/lib/errors";
 
-type Card = { id: string; front: string; back: string; order: number };
+type Card = { id: string; front: string; back: string; order: number; status?: string };
 type Deck = {
   id: string;
   name: string;
@@ -44,10 +44,10 @@ function StatusBadge({ status }: { status: Deck["status"] }) {
   );
 }
 
-const TRUNCATE_LEN = 80;
+const TRUNCATE_LEN = 120;
 function truncate(s: string, len = TRUNCATE_LEN) {
   if (s.length <= len) return s;
-  return s.slice(0, len) + "…";
+  return s.slice(0, len) + "\u2026";
 }
 
 export default function AdminFlashcardDeckDetailPage() {
@@ -58,12 +58,6 @@ export default function AdminFlashcardDeckDetailPage() {
 
   const [deck, setDeck] = useState<Deck | null>(null);
   const [loading, setLoading] = useState(true);
-  const [editorOpen, setEditorOpen] = useState(false);
-  const [editingCard, setEditingCard] = useState<Card | null>(null);
-  const [cardFront, setCardFront] = useState("");
-  const [cardBack, setCardBack] = useState("");
-  const [cardSaving, setCardSaving] = useState(false);
-  const [cardError, setCardError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [confirmDialog, setConfirmDialog] = useState<
     "publish" | "archive" | "reactivate" | "delete" | null
@@ -93,106 +87,6 @@ export default function AdminFlashcardDeckDetailPage() {
   useEffect(() => {
     loadDeck();
   }, [loadDeck]);
-
-  const openAddCard = () => {
-    setEditingCard(null);
-    setCardFront("");
-    setCardBack("");
-    setCardError(null);
-    setEditorOpen(true);
-  };
-
-  const openEditCard = (card: Card) => {
-    setEditingCard(card);
-    setCardFront(card.front);
-    setCardBack(card.back);
-    setCardError(null);
-    setEditorOpen(true);
-  };
-
-  const saveCard = async () => {
-    const front = cardFront.trim();
-    const back = cardBack.trim();
-    if (!front || !back) {
-      setCardError("Front and back are required.");
-      return;
-    }
-    setCardSaving(true);
-    setCardError(null);
-    try {
-      if (editingCard) {
-        const res = await fetch(`${baseUrl}/cards/${editingCard.id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ front, back }),
-        });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) {
-          setCardError(toUserMessage(data, "Failed to update card."));
-          return;
-        }
-        setDeck((d) =>
-          d
-            ? {
-                ...d,
-                cards: d.cards.map((c) => (c.id === editingCard.id ? { ...c, front, back } : c)),
-              }
-            : null
-        );
-        setEditorOpen(false);
-        setEditingCard(null);
-      } else {
-        const res = await fetch(`${baseUrl}/cards`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ front, back }),
-        });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) {
-          setCardError(toUserMessage(data, "Failed to add card."));
-          return;
-        }
-        setDeck((d) =>
-          d
-            ? {
-                ...d,
-                cards: [...d.cards, { id: data.id, front, back, order: d.cards.length }],
-                cardCount: d.cardCount + 1,
-              }
-            : null
-        );
-        setCardFront("");
-        setCardBack("");
-      }
-    } catch (err) {
-      setCardError(toUserMessage(err, "Failed to save card."));
-    } finally {
-      setCardSaving(false);
-    }
-  };
-
-  const deleteCard = async (card: Card) => {
-    if (!confirm("Delete this card?")) return;
-    try {
-      const res = await fetch(`${baseUrl}/cards/${card.id}`, { method: "DELETE" });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        alert(toUserMessage(data, "Failed to delete card."));
-        return;
-      }
-      setDeck((d) =>
-        d
-          ? {
-              ...d,
-              cards: d.cards.filter((c) => c.id !== card.id),
-              cardCount: d.cardCount - 1,
-            }
-          : null
-      );
-    } catch (e) {
-      alert(toUserMessage(e, "Failed to delete card."));
-    }
-  };
 
   const runAction = async (action: "publish" | "archive" | "reactivate" | "delete") => {
     setActionLoading(action);
@@ -226,7 +120,7 @@ export default function AdminFlashcardDeckDetailPage() {
     return (
       <div className="p-6 flex items-center gap-2 text-muted">
         <Spinner />
-        Loading…
+        Loading...
       </div>
     );
   }
@@ -245,6 +139,9 @@ export default function AdminFlashcardDeckDetailPage() {
     );
   }
 
+  // Filter out rejected cards for display
+  const visibleCards = deck.cards.filter((c) => c.status !== "rejected");
+
   return (
     <div className="p-6 max-w-4xl mx-auto">
       <div className="mb-4">
@@ -252,7 +149,7 @@ export default function AdminFlashcardDeckDetailPage() {
           href={`/${tenantSlug}/admin/flashcard-decks`}
           className="text-sm text-muted hover:text-body"
         >
-          ← Flashcard Decks
+          &larr; Flashcard Decks
         </Link>
       </div>
 
@@ -262,7 +159,7 @@ export default function AdminFlashcardDeckDetailPage() {
           <div className="flex items-center gap-2 mt-1">
             <StatusBadge status={deck.status} />
             <span className="text-sm text-muted">
-              {deck.cardCount} card{deck.cardCount !== 1 ? "s" : ""}
+              {visibleCards.length} card{visibleCards.length !== 1 ? "s" : ""}
             </span>
           </div>
           {deck.description && (
@@ -275,7 +172,7 @@ export default function AdminFlashcardDeckDetailPage() {
               <button
                 type="button"
                 onClick={() => setConfirmDialog("publish")}
-                disabled={deck.cardCount === 0}
+                disabled={visibleCards.length === 0}
                 className="h-9 px-4 rounded-lg bg-brand-500 text-white text-sm font-medium hover:bg-brand-600 disabled:opacity-50 flex items-center gap-2"
               >
                 {actionLoading === "publish" ? <Spinner /> : null}
@@ -286,7 +183,6 @@ export default function AdminFlashcardDeckDetailPage() {
                 onClick={() => setConfirmDialog("delete")}
                 className="h-9 px-4 rounded-lg border border-border text-error text-sm font-medium hover:bg-error-bg"
               >
-                {actionLoading === "delete" ? <Spinner /> : null}
                 Delete deck
               </button>
             </>
@@ -332,105 +228,23 @@ export default function AdminFlashcardDeckDetailPage() {
         </div>
       )}
 
-      <div className="flex items-center justify-between mb-3">
-        <h2 className="text-sm font-medium text-body">Cards</h2>
-        <button
-          type="button"
-          onClick={openAddCard}
-          className="h-8 px-3 rounded-lg border border-border text-sm font-medium text-body hover:bg-surface-sidebar/30"
-        >
-          Add card
-        </button>
-      </div>
+      <h2 className="text-sm font-medium text-body mb-3">Cards</h2>
 
-      {deck.cards.length === 0 ? (
+      {visibleCards.length === 0 ? (
         <div className="rounded-xl border border-border bg-surface-card p-8 text-center text-muted">
-          No cards yet. Add cards before publishing this deck to students.
+          No cards in this deck.
         </div>
       ) : (
         <ul className="rounded-xl border border-border bg-surface-card divide-y divide-border">
-          {deck.cards.map((card) => (
-            <li key={card.id} className="p-4 flex items-start justify-between gap-4">
-              <div className="min-w-0 flex-1">
+          {visibleCards.map((card) => (
+            <li key={card.id} className="p-4">
+              <div className="min-w-0">
                 <p className="text-body font-medium">{truncate(card.front)}</p>
                 <p className="text-sm text-muted mt-1">{truncate(card.back)}</p>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => openEditCard(card)}
-                  className="text-sm text-brand-500 hover:underline"
-                >
-                  Edit
-                </button>
-                <button
-                  type="button"
-                  onClick={() => deleteCard(card)}
-                  className="text-sm text-error hover:underline"
-                >
-                  Delete
-                </button>
               </div>
             </li>
           ))}
         </ul>
-      )}
-
-      {/* Card editor modal */}
-      {editorOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
-          <div className="bg-surface-card rounded-xl border border-border shadow-xl w-full max-w-lg p-6">
-            <h3 className="text-lg font-semibold text-body mb-4">
-              {editingCard ? "Edit card" : "Add card"}
-            </h3>
-            <label className="block text-sm font-medium text-body mb-1">Front</label>
-            <textarea
-              value={cardFront}
-              onChange={(e) => setCardFront(e.target.value)}
-              placeholder="Question or term"
-              rows={2}
-              className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-surface-base text-body placeholder:text-muted focus:outline-none focus:border-border-focus mb-4 resize-none"
-              maxLength={1000}
-            />
-            <label className="block text-sm font-medium text-body mb-1">Back</label>
-            <textarea
-              value={cardBack}
-              onChange={(e) => setCardBack(e.target.value)}
-              placeholder="Answer or definition"
-              rows={3}
-              className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-surface-base text-body placeholder:text-muted focus:outline-none focus:border-border-focus mb-4 resize-none"
-              maxLength={2000}
-            />
-            {cardError && (
-              <p className="text-sm text-error mb-4" role="alert">
-                {cardError}
-              </p>
-            )}
-            <div className="flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  if (!cardSaving) {
-                    setEditorOpen(false);
-                    setEditingCard(null);
-                  }
-                }}
-                className="h-9 px-4 rounded-lg border border-border text-body text-sm font-medium"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={saveCard}
-                disabled={cardSaving}
-                className="h-9 px-4 rounded-lg bg-brand-500 text-white text-sm font-medium disabled:opacity-50 flex items-center gap-2"
-              >
-                {cardSaving ? <Spinner /> : null}
-                {editingCard ? "Save" : "Add card"}
-              </button>
-            </div>
-          </div>
-        </div>
       )}
 
       {/* Confirm dialogs */}
@@ -440,7 +254,6 @@ export default function AdminFlashcardDeckDetailPage() {
             <h3 className="text-lg font-semibold text-body mb-2">Publish this deck?</h3>
             <p className="text-sm text-muted mb-6">
               This deck will be added to the review queue of all students in your organization.
-              Students will receive a notification when you make future updates to this deck.
             </p>
             <div className="flex justify-end gap-2">
               <button
@@ -469,7 +282,7 @@ export default function AdminFlashcardDeckDetailPage() {
             <h3 className="text-lg font-semibold text-body mb-2">Archive this deck?</h3>
             <p className="text-sm text-muted mb-6">
               Students who already have this deck will keep their copy, but no new students will
-              receive it. The deck becomes read-only after archiving.
+              receive it.
             </p>
             <div className="flex justify-end gap-2">
               <button
@@ -497,8 +310,7 @@ export default function AdminFlashcardDeckDetailPage() {
           <div className="bg-surface-card rounded-xl border border-border shadow-xl w-full max-w-md p-6">
             <h3 className="text-lg font-semibold text-body mb-2">Reactivate this deck?</h3>
             <p className="text-sm text-muted mb-6">
-              Students who don&apos;t yet have a copy will receive it. Existing holders are not
-              affected.
+              Students who don&apos;t yet have a copy will receive it.
             </p>
             <div className="flex justify-end gap-2">
               <button
@@ -526,8 +338,7 @@ export default function AdminFlashcardDeckDetailPage() {
           <div className="bg-surface-card rounded-xl border border-border shadow-xl w-full max-w-md p-6">
             <h3 className="text-lg font-semibold text-body mb-2">Delete this deck?</h3>
             <p className="text-sm text-muted mb-6">
-              This is a draft and has not been distributed to any students. It will be permanently
-              deleted.
+              This deck will be permanently deleted.
             </p>
             <div className="flex justify-end gap-2">
               <button
