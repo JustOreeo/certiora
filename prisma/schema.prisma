@@ -38,13 +38,16 @@ enum QuestionStatus {
 enum SourceMaterialStatus {
   UPLOADED
   PROCESSING
-  CHUNKED
+  CHUNKED // legacy — kept for backward compat
+  PARSED // pipeline returned structured JSON, content created as DRAFT
+  COMPLETED // admin finished reviewing all generated content
   FAILED
 }
 
 enum IngestionJobType {
   CHUNK
   GENERATE_QUESTIONS
+  PIPELINE_PROCESS // full PDF-to-content pipeline
 }
 
 enum IngestionJobStatus {
@@ -72,6 +75,7 @@ enum DeckSource {
   SHARED
   ADMIN_SEEDED
   EXAM_GENERATED
+  PDF_GENERATED
 }
 
 enum DeckStatus {
@@ -300,6 +304,8 @@ model Question {
   explanation           String?            @db.Text
   metadata              Json?
   sourceMaterialChunkId String?
+  sourceMaterialId      String? // links question to its source PDF
+  sourcePage            Int? // page number in source PDF where content was found
   status                QuestionStatus     @default(DRAFT)
   createdBy             String?
   approvedBy            String?
@@ -312,6 +318,7 @@ model Question {
   topic          Topic               @relation(fields: [topicId], references: [id], onDelete: Restrict)
   subtopic       Subtopic?           @relation(fields: [subtopicId], references: [id], onDelete: SetNull)
   sourceChunk    SourceChunk?        @relation(fields: [sourceMaterialChunkId], references: [id], onDelete: SetNull)
+  sourceMaterial SourceMaterial?     @relation(fields: [sourceMaterialId], references: [id], onDelete: SetNull)
   creator        User?               @relation("CreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
   approver       User?               @relation("ApprovedBy", fields: [approvedBy], references: [id], onDelete: SetNull)
   tags           QuestionTag[]
@@ -323,6 +330,7 @@ model Question {
   @@index([tenantId, subjectId, topicId])
   @@index([tenantId, difficulty])
   @@index([sourceMaterialChunkId])
+  @@index([sourceMaterialId])
 }
 
 model QuestionTag {
@@ -340,21 +348,28 @@ model QuestionTag {
 // ——— Source material and ingestion ———
 
 model SourceMaterial {
-  id         String               @id @default(cuid())
-  tenantId   String
-  fileName   String
-  fileKey    String // storage path (S3/R2)
-  mimeType   String               @default("application/pdf")
-  pageCount  Int?
-  status     SourceMaterialStatus @default(UPLOADED)
-  uploadedBy String
-  createdAt  DateTime             @default(now())
-  updatedAt  DateTime             @updatedAt
+  id                  String               @id @default(cuid())
+  tenantId            String
+  fileName            String
+  fileKey             String // storage path (S3/R2)
+  mimeType            String               @default("application/pdf")
+  pageCount           Int?
+  status              SourceMaterialStatus @default(UPLOADED)
+  uploadedBy          String
+  pipelineOutput      Json? // raw JSON from Python pipeline (audit trail)
+  questionsGenerated  Int? // count of questions created by pipeline
+  flashcardsGenerated Int? // count of flashcards created by pipeline
+  questionsApproved   Int? // count approved by admin
+  flashcardsApproved  Int? // count approved by admin
+  generatedDeckId     String? // FK to FlashcardDeck created from this PDF
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
 
   tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   uploader      User           @relation(fields: [uploadedBy], references: [id], onDelete: Restrict)
   chunks        SourceChunk[]
   ingestionJobs IngestionJob[]
+  questions     Question[]
 
   @@index([tenantId])
   @@index([status])
@@ -538,6 +553,8 @@ model FlashcardCard {
   frontImageKey String?  // S3 key for front image
   backImageKey  String?  // S3 key for back image
   contentFormat String   @default("plain") // "plain" | "markdown"
+  sourcePage    Int? // page number in source PDF where content was found
+  status        String   @default("active") // "active" | "rejected" — for pipeline review
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
