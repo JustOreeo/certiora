@@ -157,7 +157,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     { href: `/${tenantSlug}/admin/flashcard-decks`, label: "Flashcard Decks", icon: <IconFlashcards /> },
     { href: `/${tenantSlug}/admin/students`, label: "Students", icon: <IconUsers /> },
     { href: `/${tenantSlug}/admin/analytics`, label: "Analytics", icon: <IconBarChart /> },
-    { href: `/${tenantSlug}/admin/source-materials`, label: "Source Materials", icon: <IconBookOpen /> },
+    { href: `/${tenantSlug}/admin/source-materials`, label: "Content Pipeline", icon: <IconBookOpen /> },
     { href: `/${tenantSlug}/admin/branding`, label: "Branding", icon: <IconPalette /> },
   ];
 
