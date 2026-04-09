@@ -1,6 +1,6 @@
 import type { IngestionJobType, IngestionJobStatus, Prisma } from "@prisma/client";
 import { prisma, tenantScope } from "@/lib/db";
-import { addChunkPdfJob, addGenerateQuestionsJob } from "@/lib/queue";
+import { addChunkPdfJob, addGenerateQuestionsJob, addPipelineProcessJob } from "@/lib/queue";
 import { sourceMaterialService } from "@/services/source-material";
 
 export type IngestionJobCreateInput = {
@@ -14,6 +14,16 @@ export const ingestionService = {
   async enqueueChunkPdf(sourceMaterialId: string, tenantId: string) {
     try {
       await addChunkPdfJob({ sourceMaterialId, tenantId });
+    } catch (e) {
+      await sourceMaterialService.updateStatus(tenantId, sourceMaterialId, "FAILED");
+      throw e;
+    }
+  },
+
+  async enqueuePipelineProcess(sourceMaterialId: string, tenantId: string, fileKey: string) {
+    try {
+      await sourceMaterialService.updateStatus(tenantId, sourceMaterialId, "PROCESSING");
+      await addPipelineProcessJob({ sourceMaterialId, tenantId, fileKey });
     } catch (e) {
       await sourceMaterialService.updateStatus(tenantId, sourceMaterialId, "FAILED");
       throw e;

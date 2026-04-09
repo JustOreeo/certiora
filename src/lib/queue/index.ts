@@ -10,6 +10,7 @@ const connection = config.redisUrl
 export const JOB_NAMES = {
   CHUNK_PDF: "chunk-pdf",
   GENERATE_QUESTIONS: "generate-questions",
+  PIPELINE_PROCESS: "pipeline-process",
 } as const;
 
 // FSRS parameter optimization (Phase 8)
@@ -154,6 +155,20 @@ export function createEmailWorker(
     },
     connection
   );
+}
+
+export type PipelineProcessJobPayload = {
+  sourceMaterialId: string;
+  tenantId: string;
+  fileKey: string;
+};
+
+export function addPipelineProcessJob(payload: PipelineProcessJobPayload) {
+  if (!ingestionQueue) {
+    console.warn("[queue] Pipeline job skipped — Redis not configured. Awaiting pipeline callback.");
+    return Promise.resolve(undefined);
+  }
+  return ingestionQueue.add(JOB_NAMES.PIPELINE_PROCESS, payload);
 }
 
 export type ChunkPdfJobPayload = { sourceMaterialId: string; tenantId: string };

@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { questionBankService } from "@/services/question-bank";
+import { prisma, tenantScope } from "@/lib/db";
+import { z } from "zod";
 
 /**
  * GET /api/admin/questions/[id]
@@ -22,6 +24,64 @@ export async function GET(
     return NextResponse.json({ error: "Question not found" }, { status: 404 });
   }
   return NextResponse.json(question);
+}
+
+const updateQuestionSchema = z.object({
+  stem: z.string().min(1).optional(),
+  options: z.array(z.object({
+    id: z.string(),
+    text: z.string().min(1),
+    isCorrect: z.boolean(),
+  })).min(2).max(6).optional(),
+  explanation: z.string().optional(),
+  difficulty: z.enum(["EASY", "MEDIUM", "HARD"]).optional(),
+  subjectId: z.string().min(1).optional(),
+  topicId: z.string().min(1).optional(),
+});
+
+/**
+ * PATCH /api/admin/questions/[id]
+ * Edit a question's content (stem, options, explanation, difficulty, taxonomy).
+ */
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const session = await getServerSession(authOptions);
+  if (!session?.tenantId || session.role !== "ADMIN") {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { id } = await params;
+  const body = await request.json();
+  const parsed = updateQuestionSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: "Validation failed", details: parsed.error.flatten() },
+      { status: 400 }
+    );
+  }
+
+  const question = await questionBankService.getById(session.tenantId, id);
+  if (!question) {
+    return NextResponse.json({ error: "Question not found" }, { status: 404 });
+  }
+
+  const data: Record<string, unknown> = {};
+  if (parsed.data.stem !== undefined) data.stem = parsed.data.stem;
+  if (parsed.data.options !== undefined) data.options = parsed.data.options;
+  if (parsed.data.explanation !== undefined) data.explanation = parsed.data.explanation;
+  if (parsed.data.difficulty !== undefined) data.difficulty = parsed.data.difficulty;
+  if (parsed.data.subjectId !== undefined) data.subjectId = parsed.data.subjectId;
+  if (parsed.data.topicId !== undefined) data.topicId = parsed.data.topicId;
+
+  await prisma.question.updateMany({
+    where: { id, ...tenantScope(session.tenantId) },
+    data,
+  });
+
+  const updated = await questionBankService.getById(session.tenantId, id);
+  return NextResponse.json(updated);
 }
 
 /**

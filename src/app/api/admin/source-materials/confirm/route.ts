@@ -33,7 +33,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Upload not completed" }, { status: 400 });
     }
 
-    await ingestionService.enqueueChunkPdf(sourceMaterialId, session.tenantId);
+    await ingestionService.enqueuePipelineProcess(
+      sourceMaterialId,
+      session.tenantId,
+      material.fileKey
+    );
 
     return NextResponse.json({ success: true, sourceMaterialId });
   } catch (error) {

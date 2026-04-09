@@ -14,6 +14,7 @@ const envSchema = z.object({
   OPENAI_API_KEY: z.string().optional(),
   RESEND_API_KEY: z.string().optional(),
   EMAIL_FROM: z.string().email().optional(),
+  PIPELINE_API_KEY: z.string().optional(),
 });
 
 const parsed = envSchema.safeParse({
@@ -30,6 +31,7 @@ const parsed = envSchema.safeParse({
   OPENAI_API_KEY: process.env.OPENAI_API_KEY,
   RESEND_API_KEY: process.env.RESEND_API_KEY,
   EMAIL_FROM: process.env.EMAIL_FROM,
+  PIPELINE_API_KEY: process.env.PIPELINE_API_KEY,
 });
 
 if (!parsed.success) {
@@ -42,6 +44,7 @@ export const config = {
   nodeEnv: parsed.data.NODE_ENV,
   redisUrl: parsed.data.REDIS_URL ?? undefined,
   resendApiKey: parsed.data.RESEND_API_KEY ?? undefined,
+  pipelineApiKey: parsed.data.PIPELINE_API_KEY ?? undefined,
   emailFrom: parsed.data.EMAIL_FROM ?? "noreply@certiora.app",
   s3: {
     endpoint: parsed.data.S3_ENDPOINT,

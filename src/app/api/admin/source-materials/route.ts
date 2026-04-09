@@ -16,16 +16,15 @@ export async function GET(request: NextRequest) {
 
   const result = await sourceMaterialService.list(session.tenantId, page, pageSize);
 
-  // Attach the latest CHUNK ingestion job error for FAILED materials
+  // Attach the latest ingestion job error for FAILED materials
   const materialIds = result.items.filter((m) => m.status === "FAILED").map((m) => m.id);
-  let failedJobErrors: Record<string, string | null> = {};
+  const failedJobErrors: Record<string, string | null> = {};
 
   if (materialIds.length > 0) {
     const failedJobs = await prisma.ingestionJob.findMany({
       where: {
         ...tenantScope(session.tenantId),
         sourceMaterialId: { in: materialIds },
-        jobType: "CHUNK",
         status: "FAILED",
       },
       orderBy: { createdAt: "desc" },
@@ -41,6 +40,11 @@ export async function GET(request: NextRequest) {
   const items = result.items.map((m) => ({
     ...m,
     ingestionError: m.status === "FAILED" ? (failedJobErrors[m.id] ?? null) : null,
+    questionsGenerated: m.questionsGenerated,
+    flashcardsGenerated: m.flashcardsGenerated,
+    questionsApproved: m.questionsApproved,
+    flashcardsApproved: m.flashcardsApproved,
+    generatedDeckId: m.generatedDeckId,
   }));
 
   return NextResponse.json({ ...result, items });
